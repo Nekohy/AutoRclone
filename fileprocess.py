@@ -5,24 +5,17 @@ import subprocess
 import re
 from typing import List, Dict
 
+from exception import PackError, NoRightPasswd, UnpackError, NoExistDecompressDir
+
+
 class FileProcess:
-    def __init__(self,compress:str,tmp:str,mmt:int,repack=True,password:str=None):
+    def __init__(self,mmt:int=1,p7zip_file:str="7z",autodelete:bool=True):
         # 7z二进制文件
-        self.compress = compress
-        # 临时转储路径
-        self.tmp = tmp
+        self.p7zip_file = p7zip_file
+        # 压缩线程默认为1
+        self.mmt = mmt
         # 自动删除中间文件
-        self.autodelete = True
-        # 是否解压后重打包
-        self.repack = repack
-        # 线程数
-        self.mmt = 1 if mmt is None else mmt
-        # 是否自动重打包
-        if self.repack:
-            # 重打包密码
-            self.password = password
-            # 压缩值（0-9，0为仅储存）
-            self.mx = 0
+        self.autodelete = autodelete
 
     def decompress(self,src_fs,dst_fs,passwords:list=[None,]):
         """
@@ -34,43 +27,73 @@ class FileProcess:
         """
         if not os.path.exists(src_fs):
             logging.error(f"错误：源文件夹 {src_fs} 不存在")
-
-        if not os.path.exists(dst_fs):
-            os.makedirs(dst_fs)
+            raise NoExistDecompressDir(f"错误：源文件夹 {src_fs} 不存在")
+        os.makedirs(dst_fs,exist_ok=True)
 
         command = [
-            '7z',
+            self.p7zip_file,
             'x',
             src_fs,
             f'-o{dst_fs}',
             '-aoa',  #  覆盖文件
-            f'-mmt={self.mmt}'  # 可以根据需求调整，或使用 '-mmt=on'
+            f'-mmt={self.mmt}'
+
         ]
+        if self.autodelete:
+            command.append('-sdel')
         for pwd in passwords:
             command = command + [f'-{pwd}'] if pwd else command
             logging.debug(f"当前解压缩命令 {command}")
-            try:
-                result = subprocess.run(command, capture_output=True, text=True)
-                logging.debug(f"当前解压缩日志{result.stdout}")
-                if result.returncode == 0:
-                    logging.info(f"{src_fs}成功解压到{dst_fs}")
-                    return dst_fs
-                elif "Wrong password" in result.stderr:
-                    logging.warning(f"{src_fs}密码 '{pwd}' 不正确，尝试下一个密码")
-                else:
-                    logging.error(f"{src_fs}解压过程中发生错误: {result.stderr}")
-                    return None
-            except Exception as e:
-                logging.error(f"{src_fs}解压过程发生未预期的错误: {e}")
-                return None
-        logging.error(f"{src_fs}没有正确的密码用来解压")
-        return None
+            result = subprocess.run(command, capture_output=True, text=True)
+            logging.debug(f"当前解压缩日志{result.stdout}")
+            if result.returncode == 0:
+                logging.info(f"{src_fs}成功解压到{dst_fs}")
+                return dst_fs
+            elif "Wrong password" in result.stderr:
+                logging.debug(f"{src_fs}密码 '{pwd}' 不正确，尝试下一个密码")
+            else:
+                raise UnpackError(f"{src_fs}解压过程中发生错误: {result.stderr}")
+        raise NoRightPasswd(f"{src_fs}没有正确的密码")
 
+    def compress(self, src_fs: str, dst_fs: str, password: str = None,mx:int=0,volumes: str = "4G"):
+        """
+        压缩文件或目录
+        :param src_fs: 目标文件夹
+        :param dst_fs: 压缩文件输出路径
+        :param mx: 压缩率，默认为0，范围0-10
+        :param password: 压缩密码，默认为空
+        :param volumes: 分卷大小，默认为4g
+        :return: 压缩包文件名称
+        """
+        command = [self.p7zip_file, 'a', '-mx' + str(mx),f'-mmt={self.mmt}']  # 基本命令：添加到压缩包，仅储存，压缩后删除源文件
+        if self.autodelete:
+            command.append('-sdel')
+        # 获取文件名
+        src_name = os.path.basename(src_fs.rstrip(os.path.sep))
+        dst_location = os.path.join(dst_fs, f"{src_name}.7z")
 
-    def compress(self,src_fs:str,dst_fs:str,password:str=None,mx:int=0):
-        pass
+        # 添加密码（如果提供）
+        if password:
+            command.extend([f'-p{password}'])
 
-    def categorize_archives_grouped(self,file_list: List[Dict]) -> Dict[str, Dict]:
+        # 添加分卷设置（如果提供）
+        if volumes:
+            command.extend([f'-v{volumes}'])
+
+        # 添加输出路径和需要压缩的源路径
+        command.extend([dst_location, src_fs])
+        logging.debug(f"当前压缩命令 {command}")
+        # 执行命令
+        result = subprocess.run(command, capture_output=True, text=True)
+        logging.debug(f"当前压缩日志{result.stdout}")
+        if result.returncode == 0:
+            logging.info(f"{src_fs}成功压缩并存放到{dst_fs}")
+            return dst_fs
+        else:
+            logging.error(f"{src_fs}压缩过程中发生错误: {result.stderr}")
+            raise PackError(f"{src_fs}压缩过程中发生错误: {result.stderr}")
+
+    def filter_files(self,file_list: List[Dict]) -> Dict[str, Dict]:
         """
         按基础文件名和Path分类文件，并计算这些文件的总大小。
 
@@ -91,6 +114,8 @@ class FileProcess:
         }
 
         categorized = {}
+        if not file_list:
+            raise ValueError("No File List To Filter")
 
         for file in file_list:
             name = file.get('Name', '')
