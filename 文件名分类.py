@@ -230,7 +230,7 @@ if __name__ == "__main__":
     categorized_files = categorize_archives_grouped(files)
 
     # 打印分类结果
-    for base, info in categorized_files.items():
+    for a in categorized_files.items():
         print(f"\n基本文件名: {base}")
         print(f"  Paths:")
         for path in info['paths']:
