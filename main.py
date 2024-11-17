@@ -206,7 +206,7 @@ if __name__ == "__main__":
     # log文件
     logfile = 'autorclone.log'
     # 配置日志记录器
-    logger = setup_logger('AutoRclone', logfile, level=logging.DEBUG)
+    logging = setup_logger('AutoRclone', logfile, level=logging.DEBUG)
     # 阶段使用的队列
     download_queue, decompress_queue, compress_queue, upload_queue = [
         queue.Queue(maxsize=MAX_TASKS) for _ in range(4)
