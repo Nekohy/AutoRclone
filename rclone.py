@@ -118,6 +118,7 @@ class Rclone:
         return self.__requests("/sync/move",json)
 
 class OwnRclone(Rclone):
+    # 一些自用的数据库创建和优化一下官方HTTP那令人窒息的参数
     """
     {"Path":"Baidu/test/圣剑传说/DIPXXZ","Name":"DIPXXZ","Size":-1,"MimeType":"inode/directory","ModTime":"2024-03-21T15:56:49Z","IsDir":true},
     {"Path":"Game/未分类/严阵以待/rune-ready.or.not.zip.012","Name":"rune-ready.or.not.zip.012","Size":4290772992,"MimeType":"application/octet-stream","ModTime":"2023-12-14T15:09:58Z","IsDir":false},
@@ -234,7 +235,7 @@ class OwnRclone(Rclone):
 
     @staticmethod
     def extract_parts(s):
-        # 修改后的正则表达式，捕获分隔符
+        # 捕获分隔符
         pattern = re.compile(r'^(.*?)([:/])(.*)')
         match = pattern.match(s)
         if match:
@@ -252,6 +253,11 @@ class OwnRclone(Rclone):
         else:
             return None
 
+    def purge(self,s):
+        # 传递完整路径即可
+        fs, remote = self.extract_parts(s)
+        result = super().purge(fs,remote)
+        return result
     def lsjson(self,text:str,args:dict):
         fs,remote = self.extract_parts(text)
         result = super().lsjson(fs,remote,args)
@@ -263,4 +269,11 @@ class OwnRclone(Rclone):
         os.makedirs(dstremote,exist_ok=True)
         dstremote = os.path.join(dstremote,replace_name if replace_name else os.path.basename(srcremote)).replace("\\","/")
         return super().movefile(srcfs,srcremote,dstfs,dstremote)
+
+    def copyfile(self,src,dst,replace_name:str=None):
+        srcfs, srcremote = self.extract_parts(src)
+        dstfs, dstremote = self.extract_parts(dst)
+        os.makedirs(dstremote,exist_ok=True)
+        dstremote = os.path.join(dstremote,replace_name if replace_name else os.path.basename(srcremote)).replace("\\","/")
+        return super().copyfile(srcfs,srcremote,dstfs,dstremote)
 

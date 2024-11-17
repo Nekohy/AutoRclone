@@ -23,7 +23,7 @@ def manage_queue(queue):
     finally:
         queue.task_done()
 
-def setup_logger(logger_name, log_file, level=logging.INFO):
+def setup_logger(logger_name, log_file, level=logging.DEBUG):
     """
     创建并配置一个日志记录器。
 
@@ -92,7 +92,7 @@ def worker():
                     with manage_queue(download_queue) as download_task:
                         name = download_task[0]
                         for file in download_task[1]["paths"]:
-                            jobid = ownrclone.movefile(file,get_name(name)["download"], replace_name=None)
+                            jobid = ownrclone.copyfile(file,get_name(name)["download"], replace_name=None)
                             wait_job(jobid)
                         decompress_queue.put(name)
                         step += 1
@@ -109,7 +109,7 @@ def worker():
                     with manage_queue(compress_queue) as name:
                         fileprocess.compress(get_name(name)['decompress'], get_name(name)['compress'], password=password, mx=mx, volumes=volumes)
                         upload_queue.put(name)
-                    step['compress'] = True
+                    step += 1
                     logging.info(f"压缩步骤完成: {get_name(name)['compress']}")
 
                 if step == 3:
@@ -120,6 +120,8 @@ def worker():
                     logging.info(f"上传步骤完成: {get_name(name)['upload']}")
                 status = 1
                 error_msg = None
+                # 成功了删除file
+                ownrclone.purge(file)
                 break
             except NoRightPasswd as e:
                 logging.error(str(e))
@@ -136,6 +138,9 @@ def worker():
                 error_msg = str(e)
             time.sleep(1)
             print(f"重试第{retry}次")
+        # 如果不成功删除缓存 todo step检查，也就不用删了
+        for del_task in ["download", "decompress", "compress", "upload"]:
+            ownrclone.purge(get_name(name)[del_task])
         # 写入数据库
         # noinspection PyUnboundLocalVariable
         # 虽然我也不知道Pycharm为什么会报错这个（
@@ -197,7 +202,7 @@ if __name__ == "__main__":
     # 压缩等级,默认为0即仅储存
     mx = 0
     # 分卷大小
-    volumes = "4G"
+    volumes = "4g"
     # log文件
     logfile = 'autorclone.log'
     # 配置日志记录器
@@ -208,6 +213,6 @@ if __name__ == "__main__":
     ]
     ownrclone = OwnRclone(db_file,rclone)
     process = ownrclone.start_rclone()
-    fileprocess = FileProcess()
+    fileprocess = FileProcess(autodelete=False)
     main()
     process.kill()
