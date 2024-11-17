@@ -125,7 +125,6 @@ def worker():
             logging.error(str(e))
             status = 2
             error_msg = str(e)
-            break
         except (UnpackError, PackError, RcloneError, NoExistDecompressDir) as e:
             logging.error(f"当前任务{name}出错{e}")
             status = 3
