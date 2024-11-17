@@ -154,11 +154,11 @@ if __name__ == "__main__":
     # 临时目录
     tmp = "./tmp"
     # 起源目录
-    src = "Onedrive_test:test/安装包"
+    src = "./before"
     # 终点目录
     dst = "./dst"
     # 解压密码
-    passwords = [None,]
+    passwords = [123456,]
     # 压缩密码,默认None
     password = None
     # 压缩等级,默认为0即仅储存

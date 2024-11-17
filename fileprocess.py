@@ -42,7 +42,7 @@ class FileProcess:
         if self.autodelete:
             command.append('-sdel')
         for pwd in passwords:
-            command = command + [f'-{pwd}'] if pwd else command
+            command = command + [f'-p{pwd}'] if pwd else command
             logging.debug(f"当前解压缩命令 {command}")
             result = subprocess.run(command, capture_output=True, text=True)
             logging.debug(f"当前解压缩日志{result.stdout}")
