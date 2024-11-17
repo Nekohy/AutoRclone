@@ -4,7 +4,6 @@ import os
 import re
 import sqlite3
 import subprocess
-import sys
 from typing import Dict
 
 import requests
@@ -17,11 +16,11 @@ class Rclone:
         # Rclone二进制文件
         self.rclone = rclone
         # 启动参数
-        self.link = "127.0.0.1:5572"
+        self.link = "127.0.0.1:4572"
         self.args = ["rcd","--rc-no-auth",f"--rc-addr={self.link}"]
 
     def __requests(self,params,json):
-        result = requests.post(self.link + params,
+        result = requests.post("http://"+self.link + params,
                                json=json)
 
         if result.status_code != 200:
@@ -31,16 +30,14 @@ class Rclone:
 
     def start_rclone(self):
         try:
-            cmd = [self.rclone]
-            for arg in self.args:
-                cmd += [arg]
+            cmd = [self.rclone] + self.args
             process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,    # 捕获标准输出
-                stderr=subprocess.PIPE,    # 捕获标准错误
+                stdout=subprocess.PIPE,  # 捕获标准输出
+                stderr=subprocess.PIPE,  # 捕获标准错误
                 shell=False,
-                bufsize=1,                 # 行缓冲
-                universal_newlines=True    # 文本模式
+                bufsize=1,  # 行缓冲
+                universal_newlines=True,  # 文本模式
             )
             print(f"已启动进程 PID: {process.pid}")
             return process
@@ -54,6 +51,7 @@ class Rclone:
             "dstFs": dst,
             "createEmptySrcDirs": True
         }
+        json.update({"_async": True})
         return self.__requests("/sync/copy",json)
 
     def copyfile(self,srcfs,srcremote,dstfs,dstremote):
@@ -63,6 +61,7 @@ class Rclone:
             "dstFs": dstfs,
             "dstRemote": dstremote,
         }
+        json.update({"_async": True})
         return self.__requests("/operations/copyfile",json)
 
     def movefile(self, srcfs, srcremote, dstfs, dstremote):
@@ -72,6 +71,7 @@ class Rclone:
             "dstFs": dstfs,
             "dstRemote": dstremote,
         }
+        json.update({"_async": True})
         return self.__requests("/operations/movefile", json)
 
     def purge(self,fs,remote):
@@ -79,8 +79,12 @@ class Rclone:
             "fs": fs,
             "remote": remote
         }
+        json.update({"_async": True})
         return self.__requests("/operations/purge",json)
-
+    def joblist(self):
+        return self.__requests("/job/list",{})
+    def jobstatus(self,jobid):
+        return self.__requests("/job/status",json=jobid)
     def lsjson(self,fs,remote,args:dict):
         # args 很建议为 {recurse: True,filesOnly: True,noMimeType: True,noModTime: True}
         """
@@ -110,6 +114,7 @@ class Rclone:
             "createEmptySrcDirs": True,
             "deleteEmptySrcDirs": True
         }
+        json.update({"_async": True})
         return self.__requests("/sync/move",json)
 
 class OwnRclone(Rclone):
@@ -141,7 +146,7 @@ class OwnRclone(Rclone):
             CREATE TABLE IF NOT EXISTS paths (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 base_file_id INTEGER,
-                path TEXT,
+                path TEXT UNIQUE,
                 FOREIGN KEY (base_file_id) REFERENCES base_files(id)
             )
         ''')
@@ -167,7 +172,7 @@ class OwnRclone(Rclone):
         # 插入路径信息
         for path in info['paths']:
             self.cursor.execute('''
-                INSERT INTO paths (base_file_id, path)
+                INSERT OR IGNORE INTO paths (base_file_id, path)
                 VALUES (?, ?)
             ''', (base_file_id, path))
 
@@ -194,7 +199,7 @@ class OwnRclone(Rclone):
         ''', (status, log, basename))
         self.sqlite3.commit()
 
-    def read_data(self):
+    def read_data(self,status:int):
         """
         从 SQLite3 数据库中读取数据，并重构为嵌套字典。
 
@@ -203,7 +208,10 @@ class OwnRclone(Rclone):
         """
 
         # 查询所有基础文件及其总大小
-        self.cursor.execute('SELECT id, basename, total_size FROM base_files')
+        self.cursor.execute(
+            'SELECT id, basename, total_size FROM base_files WHERE status = ?',
+            (status,)
+        )
         base_files = self.cursor.fetchall()
 
         data = {}
@@ -223,32 +231,34 @@ class OwnRclone(Rclone):
         return data
 
     @staticmethod
-    def _extract_parts(text):
-        """
-        从给定的字符串中提取第一个:前后的内容。
-
-        Args:
-            text (str): 输入的字符串，例如 'srcfs = "Alist:src"'。
-
-        Returns:
-            tuple: 包含分隔符前的内容和分隔符后的内容。如果未找到匹配项，返回 (None, None)。
-        """
-        pattern = r'^(?:([^:]+):)?(.+)$'
-        match = re.search(pattern, text)
+    def extract_parts(s):
+        # 修改后的正则表达式，捕获分隔符
+        pattern = re.compile(r'^(.*?)([:/])(.*)')
+        match = pattern.match(s)
         if match:
-            before = match.group(1).strip() if match.group(1) else None
-            after = match.group(2).strip()
-            return before, after
-        return None, None
+            prefix_part = match.group(1) if match.group(1) else '.'
+            separator = match.group(2)
+            suffix = match.group(3)
+
+            # 如果分隔符是 ':', 将其包含在 prefix 中
+            if separator == ':':
+                prefix = prefix_part + separator
+            else:
+                prefix = prefix_part if prefix_part else '.'
+
+            return prefix, suffix
+        else:
+            return None
 
     def lsjson(self,text:str,args:dict):
-        fs,remote = self._extract_parts(text)
+        fs,remote = self.extract_parts(text)
         result = super().lsjson(fs,remote,args)
         return result
 
-    def movefile(self,src,dst):
-        srcfs, srcremote = self._extract_parts(src)
-        dstfs, dstremote = self._extract_parts(dst)
+    def movefile(self,src,dst,replace_name:str=None):
+        srcfs, srcremote = self.extract_parts(src)
+        dstfs, dstremote = self.extract_parts(dst)
         os.makedirs(dstremote,exist_ok=True)
-        super().movefile(srcfs,srcremote,dstfs,dstremote)
+        dstremote = os.path.join(dstremote,replace_name if replace_name else os.path.basename(srcremote)).replace("\\","/")
+        return super().movefile(srcfs,srcremote,dstfs,dstremote)
 

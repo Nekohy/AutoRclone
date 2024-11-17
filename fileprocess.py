@@ -93,16 +93,18 @@ class FileProcess:
             logging.error(f"{src_fs}压缩过程中发生错误: {result.stderr}")
             raise PackError(f"{src_fs}压缩过程中发生错误: {result.stderr}")
 
-    def filter_files(self,file_list: List[Dict]) -> Dict[str, Dict]:
+    def filter_files(self,file_list: List[Dict],fs:str=None) -> Dict[str, Dict]:
         """
         按基础文件名和Path分类文件，并计算这些文件的总大小。
 
         Args:
             file_list (List[Dict]): 包含文件信息的字典列表，每个字典包含 'Name' 和 'Path' 键。
+            fs: 添加到文件名前的附加路径 例如 Alist:
 
         Returns:
             Dict[str, Dict]: 嵌套字典，第一层键为基础文件名，
                              值为包含 'paths' 列表和 'total_size' 的字典。
+
         """
         # 定义压缩类型及其匹配模式的正则表达式
         patterns = {
@@ -119,7 +121,7 @@ class FileProcess:
 
         for file in file_list:
             name = file.get('Name', '')
-            path = file.get('Path', '')
+            path = os.path.join(fs,file.get('Path', '')).replace('\\', '/') if fs else file.get('Path', '')
             size = file.get('Size', 0)
             matched = False  # 标记文件是否已被匹配
 

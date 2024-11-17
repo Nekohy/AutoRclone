@@ -1,5 +1,6 @@
 # main.py
 import logging
+import os
 import queue
 import threading
 import time
@@ -11,42 +12,79 @@ from rclone import OwnRclone
 
 
 @contextmanager
-def manage_queue(queue, task):
+def manage_queue(queue):
     """
     上下文管理器，用于管理队列的加减操作。
     """
     try:
-        queue.put(task)  # 将任务添加到队列，如果队列已满，会阻塞直到有空位
-        yield
+        task = queue.get()
+        yield task  # 获取任务
     finally:
-        queue.get()      # 从队列中移除任务
         queue.task_done()
 
+def get_name(name):
+    # 构建路径
+    download = os.path.join(tmp, "download", name).replace("\\", "/")
+    decompress = os.path.join(tmp, "decompress", name).replace("\\", "/")
+    compress = os.path.join(tmp, "compress", name).replace("\\", "/")
+    upload = os.path.join(dst, name).replace("\\", "/")
+    return {"download":download, "decompress":decompress, "compress":compress, "upload":upload}
+
+def wait_job(jobid):
+    while True:
+        status = ownrclone.jobstatus(jobid)
+        print(status.get("progress"))
+        if status["finished"]:
+            if status["success"] is False:
+                raise RcloneError(f"{jobid}失败")
+            else:
+                return status["output"]
+        else:
+            logging.debug(f"当前{jobid}进度{status.get('progress')}")
+        time.sleep(heart)
 
 def worker():
     while True:
-        download_task = download_queue.get()
-        if download_task is None:
-            download_queue.task_done()
-            break
-        name,task = download_task[0], download_task[1]
+        ownrclone = OwnRclone(db_file, rclone)
+        steps_completed = {
+            'download': False,
+            'decompress': False,
+            'compress': False,
+            'upload': False,
+        }
         for retry in range(3):
             try:
-                with manage_queue(download_queue, download_task):
-                    ownrclone.movefile(srcfs,f"{tmp}/download/{name}")
-                    decompress_queue.put(f"{tmp}/download/{name}")
+                # Queue控制流程
+                if not steps_completed['download']:
+                    with manage_queue(download_queue) as download_task:
+                        name = download_task[0]
+                        for file in download_task[1]["paths"]:
+                            jobid = ownrclone.movefile(file,get_name(name)["download"], replace_name=None)
+                            wait_job(jobid)
+                        decompress_queue.put(name)
+                        steps_completed['download'] = True
+                        logging.info(f"下载步骤完成: {name}")
 
+                if not steps_completed['decompress']:
+                    with manage_queue(decompress_queue) as name:
+                        fileprocess.decompress(get_name(name)["download"], get_name(name)["decompress"], passwords=passwords)
+                        compress_queue.put(name)
+                        steps_completed['decompress'] = True
+                        logging.info(f"解压步骤完成: {get_name(name)['decompress']}")
 
-                with manage_queue(decompress_queue, decompress_queue.get()):
-                    fileprocess.decompress(f"{tmp}/download/{name}",f"{tmp}/decompress/{name}",passwords=passwords)
-                    compress_queue.put(f"{tmp}/decompress/{name}")
+                if not steps_completed['compress']:
+                    with manage_queue(compress_queue) as name:
+                        fileprocess.compress(get_name(name)['decompress'], get_name(name)['compress'], password=password, mx=mx, volumes=volumes)
+                        upload_queue.put(name)
+                    steps_completed['compress'] = True
+                    logging.info(f"压缩步骤完成: {get_name(name)['compress']}")
 
-                with manage_queue(compress_queue, compress_queue.get()):
-                    fileprocess.compress(f"{tmp}/decompress/{name}",f"{tmp}/compress/{name}",password=password,mx=mx,volumes=volumes)
-                    upload_queue.put(f"{tmp}/compress/{name}")
-
-                with manage_queue(upload_queue, upload_queue.get()):
-                    ownrclone.move(source=f"{tmp}/compress/{name}",dst=f"{dstfs}/{name}")
+                if not steps_completed['upload']:
+                    with manage_queue(upload_queue) as name:
+                        jobid = ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
+                        wait_job(jobid)
+                    steps_completed['upload'] = True
+                    logging.info(f"上传步骤完成: {get_name(name)['upload']}")
                 status = 1
                 error_msg = None
                 break
@@ -55,13 +93,13 @@ def worker():
                 status = 2
                 error_msg = str(e)
                 break
-            except UnpackError or PackError or RcloneError or NoExistDecompressDir as e:
-                logging.error(f"当前任务{download_task[0]}出错{e}")
+            except (UnpackError, PackError, RcloneError, NoExistDecompressDir) as e:
+                logging.error(f"当前任务{name}出错{e}")
                 status = 3
                 error_msg = str(e)
             except Exception as e:
                 status = 4
-                logging.error(f"当前任务{download_task[0]}未知出错{e}")
+                logging.error(f"当前任务{name}未知出错{e}")
                 error_msg = str(e)
             time.sleep(1)
             print(f"重试第{retry}次")
@@ -71,7 +109,6 @@ def worker():
         # 虽然我也不知道Pycharm为什么会报错这个（
         ownrclone.update_status(basename=name, status=status,log=error_msg if error_msg else "")
 
-
 def transfer(tasks):
     # 创建任务
     threads = []
@@ -80,7 +117,7 @@ def transfer(tasks):
         t.start()
         threads.append(t)
     # 添加任务到下载队列
-    for task in tasks:
+    for task in tasks.items():
         download_queue.put(task)
     # 等待所有队列完成任务
     download_queue.join()
@@ -88,22 +125,17 @@ def transfer(tasks):
     compress_queue.join()
     upload_queue.join()
 
-    for t in threads:
-        t.join()
-
-
 def main():
-    # 获取lsjson的值
-    lsjson = ownrclone.lsjson(srcfs,args={"recurse": True,"filesOnly": True,"noMimeType": True,"noModTime": True})
+    lsjson = ownrclone.lsjson(src, args={"recurse": True, "filesOnly": True, "noMimeType": True, "noModTime": True})["list"]
+    #todo 临时补丁
+    srcfs,_ = ownrclone.extract_parts(src)
     # 过滤文件列表
-    filter_list = fileprocess.filter_files(lsjson)
+    filter_list = fileprocess.filter_files(lsjson,srcfs)
     # 写入到sqlite3(不必担心覆盖问题)
     ownrclone.insert_data(filter_list)
-    # 读取sqlite3数据
-    tasks = ownrclone.read_data()
+    # 读取sqlite3数据,只读取未完成的数据
+    tasks = ownrclone.read_data(status=0)
     transfer(tasks)
-
-
 
 
 if __name__ == "__main__":
@@ -115,14 +147,16 @@ if __name__ == "__main__":
     db_file = "./test.db"
     # rclone文件
     rclone = "./rclone.exe"
+    # Rclone HTTP监听间隔，以s为单位
+    heart = 1
     # 7zip文件
-    p7zip_file = "./7z.exe"
+    p7zip_file = "./7zip/7z.exe"
     # 临时目录
     tmp = "./tmp"
     # 起源目录
-    srcfs = "Alist:src"
+    src = "Onedrive_test:test/安装包"
     # 终点目录
-    dstfs = "Alist:dst"
+    dst = "./dst"
     # 解压密码
     passwords = [None,]
     # 压缩密码,默认None
@@ -137,6 +171,7 @@ if __name__ == "__main__":
         queue.Queue(maxsize=MAX_TASKS) for _ in range(4)
     ]
     ownrclone = OwnRclone(db_file,rclone)
-    ownrclone.start_rclone()
+    process = ownrclone.start_rclone()
     fileprocess = FileProcess()
     main()
+    process.kill()
