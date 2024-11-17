@@ -2,6 +2,7 @@
 import logging
 import os
 import queue
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -22,6 +23,42 @@ def manage_queue(queue):
     finally:
         queue.task_done()
 
+def setup_logger(logger_name, log_file, level=logging.INFO):
+    """
+    创建并配置一个日志记录器。
+
+    :param logger_name: 日志记录器的名称
+    :param log_file: 日志文件的路径
+    :param level: 日志级别
+    :return: 配置好的日志记录器
+    """
+    # 创建日志记录器
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(level)
+    logger.propagate = False  # 防止日志重复
+
+    # 检查是否已经添加过处理器
+    if not logger.handlers:
+        # 创建格式化器
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+        # 创建文件处理器
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setLevel(level)  # 设置文件处理器的日志级别
+        file_handler.setFormatter(formatter)
+
+        # 创建控制台处理器
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(level)  # 设置控制台处理器的日志级别
+        console_handler.setFormatter(formatter)
+
+        # 将处理器添加到日志记录器
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+    return logger
+
 def get_name(name):
     # 构建路径
     download = os.path.join(tmp, "download", name).replace("\\", "/")
@@ -33,6 +70,7 @@ def get_name(name):
 def wait_job(jobid):
     while True:
         status = ownrclone.jobstatus(jobid)
+        # 这个progress是不是没用（（
         print(status.get("progress"))
         if status["finished"]:
             if status["success"] is False:
@@ -46,44 +84,39 @@ def wait_job(jobid):
 def worker():
     while True:
         ownrclone = OwnRclone(db_file, rclone)
-        steps_completed = {
-            'download': False,
-            'decompress': False,
-            'compress': False,
-            'upload': False,
-        }
+        step = 0
         for retry in range(3):
             try:
                 # Queue控制流程
-                if not steps_completed['download']:
+                if step == 0:
                     with manage_queue(download_queue) as download_task:
                         name = download_task[0]
                         for file in download_task[1]["paths"]:
                             jobid = ownrclone.movefile(file,get_name(name)["download"], replace_name=None)
                             wait_job(jobid)
                         decompress_queue.put(name)
-                        steps_completed['download'] = True
+                        step += 1
                         logging.info(f"下载步骤完成: {name}")
 
-                if not steps_completed['decompress']:
+                if step == 1:
                     with manage_queue(decompress_queue) as name:
                         fileprocess.decompress(get_name(name)["download"], get_name(name)["decompress"], passwords=passwords)
                         compress_queue.put(name)
-                        steps_completed['decompress'] = True
+                        step += 1
                         logging.info(f"解压步骤完成: {get_name(name)['decompress']}")
 
-                if not steps_completed['compress']:
+                if step == 2:
                     with manage_queue(compress_queue) as name:
                         fileprocess.compress(get_name(name)['decompress'], get_name(name)['compress'], password=password, mx=mx, volumes=volumes)
                         upload_queue.put(name)
-                    steps_completed['compress'] = True
+                    step['compress'] = True
                     logging.info(f"压缩步骤完成: {get_name(name)['compress']}")
 
-                if not steps_completed['upload']:
+                if step == 3:
                     with manage_queue(upload_queue) as name:
                         jobid = ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
                         wait_job(jobid)
-                    steps_completed['upload'] = True
+                    step += 1
                     logging.info(f"上传步骤完成: {get_name(name)['upload']}")
                 status = 1
                 error_msg = None
@@ -103,11 +136,10 @@ def worker():
                 error_msg = str(e)
             time.sleep(1)
             print(f"重试第{retry}次")
-
         # 写入数据库
         # noinspection PyUnboundLocalVariable
         # 虽然我也不知道Pycharm为什么会报错这个（
-        ownrclone.update_status(basename=name, status=status,log=error_msg if error_msg else "")
+        ownrclone.update_status(basename=name, status=status,step=step,log=error_msg if error_msg else "")
 
 def transfer(tasks):
     # 创建任务
@@ -135,6 +167,7 @@ def main():
     ownrclone.insert_data(filter_list)
     # 读取sqlite3数据,只读取未完成的数据
     tasks = ownrclone.read_data(status=0)
+    logging.info(f"已读取到{len(tasks)}条任务")
     transfer(tasks)
 
 
@@ -158,14 +191,17 @@ if __name__ == "__main__":
     # 终点目录
     dst = "./dst"
     # 解压密码
-    passwords = [123456,]
+    passwords = [1234567,]
     # 压缩密码,默认None
     password = None
     # 压缩等级,默认为0即仅储存
     mx = 0
     # 分卷大小
     volumes = "4G"
-
+    # log文件
+    logfile = 'autorclone.log'
+    # 配置日志记录器
+    logger = setup_logger('AutoRclone', logfile, level=logging.DEBUG)
     # 阶段使用的队列
     download_queue, decompress_queue, compress_queue, upload_queue = [
         queue.Queue(maxsize=MAX_TASKS) for _ in range(4)

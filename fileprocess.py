@@ -65,7 +65,8 @@ class FileProcess:
         :param volumes: 分卷大小，默认为4g
         :return: 压缩包文件名称
         """
-        command = [self.p7zip_file, 'a', '-mx' + str(mx),f'-mmt={self.mmt}']  # 基本命令：添加到压缩包，仅储存，压缩后删除源文件
+
+        command = [self.p7zip_file, 'a', '-mx' + str(mx).lower(),f'-mmt={self.mmt}']  # 基本命令：添加到压缩包，仅储存，压缩后删除源文件
         if self.autodelete:
             command.append('-sdel')
         # 获取文件名
