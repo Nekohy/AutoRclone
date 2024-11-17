@@ -82,62 +82,58 @@ def wait_job(jobid):
         time.sleep(heart)
 
 def worker():
+    ownrclone = OwnRclone(db_file, rclone)
     while True:
-        ownrclone = OwnRclone(db_file, rclone)
         step = 0
-        for retry in range(3):
-            try:
-                # Queue控制流程
-                if step == 0:
-                    with manage_queue(download_queue) as download_task:
-                        name = download_task[0]
-                        for file in download_task[1]["paths"]:
-                            jobid = ownrclone.copyfile(file,get_name(name)["download"], replace_name=None)
-                            wait_job(jobid)
-                        decompress_queue.put(name)
-                        step += 1
-                        logging.info(f"下载步骤完成: {name}")
-
-                if step == 1:
-                    with manage_queue(decompress_queue) as name:
-                        fileprocess.decompress(get_name(name)["download"], get_name(name)["decompress"], passwords=passwords)
-                        compress_queue.put(name)
-                        step += 1
-                        logging.info(f"解压步骤完成: {get_name(name)['decompress']}")
-
-                if step == 2:
-                    with manage_queue(compress_queue) as name:
-                        fileprocess.compress(get_name(name)['decompress'], get_name(name)['compress'], password=password, mx=mx, volumes=volumes)
-                        upload_queue.put(name)
-                    step += 1
-                    logging.info(f"压缩步骤完成: {get_name(name)['compress']}")
-
-                if step == 3:
-                    with manage_queue(upload_queue) as name:
-                        jobid = ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
+        try:
+            # Queue控制流程
+            if step == 0:
+                with manage_queue(download_queue) as download_task:
+                    name = download_task[0]
+                    for file in download_task[1]["paths"]:
+                        jobid = ownrclone.copyfile(file,get_name(name)["download"], replace_name=None)
                         wait_job(jobid)
+                    decompress_queue.put(name)
                     step += 1
-                    logging.info(f"上传步骤完成: {get_name(name)['upload']}")
-                status = 1
-                error_msg = None
-                # 成功了删除file
-                ownrclone.purge(file)
-                break
-            except NoRightPasswd as e:
-                logging.error(str(e))
-                status = 2
-                error_msg = str(e)
-                break
-            except (UnpackError, PackError, RcloneError, NoExistDecompressDir) as e:
-                logging.error(f"当前任务{name}出错{e}")
-                status = 3
-                error_msg = str(e)
-            except Exception as e:
-                status = 4
-                logging.error(f"当前任务{name}未知出错{e}")
-                error_msg = str(e)
-            time.sleep(1)
-            print(f"重试第{retry}次")
+                    logging.info(f"下载步骤完成: {name}")
+
+            if step == 1:
+                with manage_queue(decompress_queue) as name:
+                    fileprocess.decompress(get_name(name)["download"], get_name(name)["decompress"], passwords=passwords)
+                    compress_queue.put(name)
+                    step += 1
+                    logging.info(f"解压步骤完成: {get_name(name)['decompress']}")
+
+            if step == 2:
+                with manage_queue(compress_queue) as name:
+                    fileprocess.compress(get_name(name)['decompress'], get_name(name)['compress'], password=password, mx=mx, volumes=volumes)
+                    upload_queue.put(name)
+                step += 1
+                logging.info(f"压缩步骤完成: {get_name(name)['compress']}")
+
+            if step == 3:
+                with manage_queue(upload_queue) as name:
+                    jobid = ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
+                    wait_job(jobid)
+                step += 1
+                logging.info(f"上传步骤完成: {get_name(name)['upload']}")
+            status = 1
+            error_msg = None
+            # 成功了删除file
+            ownrclone.purge(file)
+        except NoRightPasswd as e:
+            logging.error(str(e))
+            status = 2
+            error_msg = str(e)
+            break
+        except (UnpackError, PackError, RcloneError, NoExistDecompressDir) as e:
+            logging.error(f"当前任务{name}出错{e}")
+            status = 3
+            error_msg = str(e)
+        except Exception as e:
+            status = 4
+            logging.error(f"当前任务{name}未知出错{e}")
+            error_msg = str(e)
         # 如果不成功删除缓存 todo step检查，也就不用删了
         for del_task in ["download", "decompress", "compress", "upload"]:
             ownrclone.purge(get_name(name)[del_task])
