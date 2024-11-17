@@ -208,6 +208,6 @@ if __name__ == "__main__":
     ]
     ownrclone = OwnRclone(db_file,rclone)
     process = ownrclone.start_rclone()
-    fileprocess = FileProcess(mmt=mmt,autodelete=False)
+    fileprocess = FileProcess(mmt=mmt,p7zip_file=p7zip_file,autodelete=False)
     main()
     process.kill()
