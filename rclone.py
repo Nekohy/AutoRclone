@@ -258,6 +258,7 @@ class OwnRclone(Rclone):
         fs, remote = self.extract_parts(s)
         result = super().purge(fs,remote)
         return result
+
     def lsjson(self,text:str,args:dict):
         fs,remote = self.extract_parts(text)
         result = super().lsjson(fs,remote,args)
