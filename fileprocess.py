@@ -52,7 +52,7 @@ class FileProcess:
             elif "Wrong password" in result.stderr:
                 logging.debug(f"{src_fs}密码 '{pwd}' 不正确，尝试下一个密码")
             else:
-                raise UnpackError(f"{src_fs}解压过程中发生错误: {result.stderr}")
+                raise UnpackError(f"{src_fs}解压过程中发生错误: {result.stderr}\n标准输出: {result.stdout}")
         raise NoRightPasswd(f"{src_fs}没有正确的密码")
 
     def compress(self, src_fs: str, dst_fs: str, password: str = None,mx:int=0,volumes: str = "4G"):

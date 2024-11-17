@@ -71,7 +71,7 @@ def wait_job(jobid):
     while True:
         status = ownrclone.jobstatus(jobid)
         # 这个progress是不是没用（（
-        print(status.get("progress"))
+        # print(status.get("progress"))
         if status["finished"]:
             if status["success"] is False:
                 raise RcloneError(f"{jobid}失败")
