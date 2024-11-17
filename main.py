@@ -192,27 +192,27 @@ if __name__ == "__main__":
     # 临时目录
     tmp = "./tmp"
     # 起源目录
-    src = "./before"
+    src = "Alist:Baidu/BPFT2/"
     # 终点目录
-    dst = "./dst"
+    dst = "Onedrive_Plan2:temp/"
     # 解压密码
-    passwords = [1234567,]
+    passwords = ["gamer520","switch520"]
     # 压缩密码,默认None
-    password = None
+    password = "Nekohy"
     # 压缩等级,默认为0即仅储存
     mx = 0
+    # 解压缩线程数
+    mmt = 6
     # 分卷大小
     volumes = "4g"
     # log文件
     logfile = 'autorclone.log'
-    # 配置日志记录器
-    logging = setup_logger('AutoRclone', logfile, level=logging.DEBUG)
     # 阶段使用的队列
     download_queue, decompress_queue, compress_queue, upload_queue = [
         queue.Queue(maxsize=MAX_TASKS) for _ in range(4)
     ]
     ownrclone = OwnRclone(db_file,rclone)
     process = ownrclone.start_rclone()
-    fileprocess = FileProcess(autodelete=False)
+    fileprocess = FileProcess(mmt=mmt,autodelete=False)
     main()
     process.kill()

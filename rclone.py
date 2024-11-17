@@ -20,7 +20,7 @@ class Rclone:
         self.args = ["rcd","--rc-no-auth",f"--rc-addr={self.link}"]
 
     def __requests(self,params,json):
-        result = requests.post("http://"+self.link + params,
+        result = requests.post(f"http://{self.link}{params}",
                                json=json)
 
         if result.status_code != 200:
