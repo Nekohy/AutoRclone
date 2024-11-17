@@ -30,7 +30,7 @@ class FileProcess:
             raise NoExistDecompressDir(f"错误：源文件夹 {src_fs} 不存在")
         os.makedirs(dst_fs,exist_ok=True)
 
-        command = [
+        origin_command = [
             self.p7zip_file,
             'x',
             src_fs,
@@ -40,9 +40,9 @@ class FileProcess:
 
         ]
         if self.autodelete:
-            command.append('-sdel')
+            origin_command.append('-sdel')
         for pwd in passwords:
-            command += [f'-p{pwd}'] if pwd else ['-p']
+            command = origin_command + ([f'-p{pwd}'] if pwd else ['-p'])
             logging.debug(f"当前解压缩命令 {command}")
             result = subprocess.run(command, capture_output=True, text=True)
             logging.debug(f"当前解压缩日志{result.stdout}")
