@@ -68,13 +68,6 @@ def get_name(name):
     upload = os.path.join(dst, name).replace("\\", "/")
     return {"download":download, "decompress":decompress, "compress":compress, "upload":upload}
 
-def get_job_status(jobid):
-    status = ownrclone.jobstatus(jobid)
-    if status["success"] is False:
-        raise RcloneError(f"{jobid}失败")
-    else:
-        return status["output"]
-
 def worker():
     ownrclone = OwnRclone(db_file, rclone)
     while True:
@@ -85,8 +78,7 @@ def worker():
                 with manage_queue(download_queue) as download_task:
                     name = download_task[0]
                     for file in download_task[1]["paths"]:
-                        jobid = ownrclone.copyfile(file,get_name(name)["download"], replace_name=None)
-                        get_job_status(jobid)
+                        ownrclone.copyfile(file,get_name(name)["download"], replace_name=None)
                     decompress_queue.put(name)
                     step += 1
                     logging.info(f"下载步骤完成: {name}")
@@ -100,8 +92,7 @@ def worker():
 
             if step == 2:
                 with manage_queue(compress_queue) as name:
-                    jobid = ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
-                    get_job_status(jobid)
+                    ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
                 step += 1
                 logging.info(f"压缩步骤完成: {get_name(name)['compress']}")
 
