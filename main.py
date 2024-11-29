@@ -1,4 +1,5 @@
 # main.py
+import argparse
 import logging
 import os
 import queue
@@ -106,7 +107,7 @@ def worker():
 
             if step == 2:
                 with manage_queue(compress_queue) as name:
-                    fileprocess.compress(get_name(name)['decompress'], get_name(name)['compress'], password=password, mx=mx, volumes=volumes)
+                    fileprocess.compress(str(get_name(name)['decompress']), str(get_name(name)['compress']), password=password, mx=mx, volumes=volumes)
                     upload_queue.put(name)
                 step += 1
                 logging.info(f"压缩步骤完成: {get_name(name)['compress']}")
@@ -157,7 +158,7 @@ def transfer(tasks):
     compress_queue.join()
     upload_queue.join()
 
-def main():
+def start():
     lsjson = ownrclone.lsjson(src, args={"recurse": True, "filesOnly": True, "noMimeType": True, "noModTime": True})["list"]
     #todo 临时补丁,分离驱动器和名称，前者是不带驱动器的
     srcfs,_ = ownrclone.extract_parts(src)
@@ -171,45 +172,64 @@ def main():
     transfer(tasks)
 
 
+def main():
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description="自动化任务处理脚本")
+
+    # 添加命令行参数
+    parser.add_argument('--rclone', type=str, help='rclone文件路径')
+    parser.add_argument('--p7zip_file', type=str, help='7zip文件路径')
+    parser.add_argument('--src', type=str, help='起源目录路径')
+    parser.add_argument('--dst', type=str, help='终点目录路径')
+    parser.add_argument('--passwords', nargs='+', help='解压密码列表')
+    parser.add_argument('--password', type=str, help='压缩密码')
+    parser.add_argument('--max_tasks', type=int, default=2, help='每个阶段的最大任务数量，默认2')
+    parser.add_argument('--thread', type=int, default=8, help='线程数，建议是MAX_TASKS的4倍，默认8')
+    parser.add_argument('--db_file', type=str, default='./data.db', help='数据库文件路径')
+    parser.add_argument('--heart', type=int, default=1, help='Rclone HTTP监听间隔，以秒为单位，默认1s')
+    parser.add_argument('--tmp', type=str, default='./tmp', help='临时目录路径')
+    parser.add_argument('--mx', type=int, default=0, help='压缩等级，默认为0即仅储存')
+    parser.add_argument('--mmt', type=int, default=4, help='解压缩线程数')
+    parser.add_argument('--volumes', type=str, default='4g', help='分卷大小')
+    parser.add_argument('--logfile', type=str, default='AutoRclone.log', help='日志文件路径')
+    parser.add_argument('--depth', type=int, default=0, help='使用路径中的目录作为最终文件夹名的探测深度')
+
+    # 解析参数
+    args = parser.parse_args()
+    return args
+
+
 if __name__ == "__main__":
-    # 每个阶段的最大任务数量
-    MAX_TASKS = 2
-    # 线程数,建议是MAX_TASKS的4倍数
-    THREAD = 4
-    # db_file 数据库文件
-    db_file = "./test.db"
-    # rclone文件
-    rclone = "./rclone.exe"
-    # Rclone HTTP监听间隔，以s为单位
-    heart = 1
-    # 7zip文件
-    p7zip_file = "./7zip/7z.exe"
-    # 临时目录
-    tmp = "./tmp"
-    # 起源目录
-    src = "./before"
-    # 终点目录
-    dst = "Onedrive_Plan2:temp/"
-    # 解压密码
-    passwords = ["gamer520","switch520"]
-    # 压缩密码,默认None
-    password = "Nekohy"
-    # 压缩等级,默认为0即仅储存
-    mx = 0
-    # 解压缩线程数
-    mmt = 6
-    # 分卷大小
-    volumes = "4g"
-    # log文件
-    logfile = 'autorclone.log'
-    # 脚本使用路径中的目录作为最终文件夹名，该值代表探测深度。0表示使用文件名
-    depth = 1
+    args = main()
+    # 使用解析的参数
+    MAX_TASKS = args.max_tasks
+    THREAD = args.thread
+    db_file = args.db_file
+    rclone = args.rclone
+    heart = args.heart
+    p7zip_file = args.p7zip_file
+    tmp = args.tmp
+    src = args.src
+    dst = args.dst
+    passwords = args.passwords
+    password = args.password
+    mx = args.mx
+    mmt = args.mmt
+    volumes = args.volumes
+    logfile = args.logfile
+    depth = args.depth
     # 阶段使用的队列
     download_queue, decompress_queue, compress_queue, upload_queue = [
         queue.Queue(maxsize=MAX_TASKS) for _ in range(4)
     ]
-    ownrclone = OwnRclone(db_file,rclone)
+
+    # 初始化
+    ownrclone = OwnRclone(db_file, rclone)
     process = ownrclone.start_rclone()
-    fileprocess = FileProcess(mmt=mmt,p7zip_file=p7zip_file,autodelete=True)
-    main()
+    fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True)
+
+    # 启动
+    start()
+
+    # 结束进程
     process.kill()
