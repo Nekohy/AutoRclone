@@ -5,7 +5,7 @@ import os
 import queue
 import sys
 import threading
-import time
+from dotenv import load_dotenv
 from contextlib import contextmanager
 
 from exception import NoRightPasswd, UnpackError, PackError, RcloneError, NoExistDecompressDir
@@ -164,36 +164,36 @@ def start():
     transfer(tasks)
 
 
+# Load environment variables from .env file
+load_dotenv()
+
 def main():
-    # 解析命令行参数
     parser = argparse.ArgumentParser(description="自动化任务处理脚本")
 
-    # 添加命令行参数
-    parser.add_argument('--rclone', type=str,help='rclone文件路径')
-    parser.add_argument('--p7zip_file', type=str, help='7zip文件路径')
-    parser.add_argument('--src', type=str, help='起源目录路径')
-    parser.add_argument('--dst', type=str, help='终点目录路径')
-    parser.add_argument('--passwords', nargs='+', help='解压密码列表')
-    parser.add_argument('--password', type=str, help='压缩密码')
-    parser.add_argument('--max_tasks', type=int, default=2, help='每个阶段的最大任务数量，默认2')
-    parser.add_argument('--thread', type=int, default=8, help='线程数，建议是MAX_TASKS的4倍，默认8')
-    parser.add_argument('--db_file', type=str, default='./data.db', help='数据库文件路径')
-    parser.add_argument('--heart', type=int, default=1, help='Rclone HTTP监听间隔，以秒为单位，默认1s')
-    parser.add_argument('--tmp', type=str, default='./tmp', help='临时目录路径')
-    parser.add_argument('--mx', type=int, default=0, help='压缩等级，默认为0即仅储存')
-    parser.add_argument('--mmt', type=int, default=4, help='解压缩线程数')
-    parser.add_argument('--volumes', type=str, default='4g', help='分卷大小')
-    parser.add_argument('--logfile', type=str, default='AutoRclone.log', help='日志文件路径')
-    parser.add_argument('--depth', type=int, default=0, help='使用路径中的目录作为最终文件夹名的探测深度,例如a:b/c/d.zip 设置1则压缩后为c的名称')
+    # Add command line arguments with defaults from environment variables
+    parser.add_argument('--rclone', type=str, default=os.getenv('RCLONE_PATH'), help='rclone文件路径')
+    parser.add_argument('--p7zip_file', type=str, default=os.getenv('P7ZIP_FILE'), help='7zip文件路径')
+    parser.add_argument('--src', type=str, default=os.getenv('SRC'), help='起源目录路径')
+    parser.add_argument('--dst', type=str, default=os.getenv('DST'), help='终点目录路径')
+    parser.add_argument('--passwords', nargs='+', default=os.getenv('PASSWORDS', '').split(), help='解压密码列表')
+    parser.add_argument('--password', type=str, default=os.getenv('PASSWORD'), help='压缩密码')
+    parser.add_argument('--max_tasks', type=int, default=int(os.getenv('MAX_TASKS', 2)), help='每个阶段的最大任务数量，默认2')
+    parser.add_argument('--thread', type=int, default=int(os.getenv('THREAD', 8)), help='线程数，建议是MAX_TASKS的4倍，默认8')
+    parser.add_argument('--db_file', type=str, default=os.getenv('DB_FILE', './data.db'), help='数据库文件路径')
+    parser.add_argument('--heart', type=int, default=int(os.getenv('HEART', 1)), help='Rclone HTTP监听间隔，以秒为单位，默认1s')
+    parser.add_argument('--tmp', type=str, default=os.getenv('TMP', './tmp'), help='临时目录路径')
+    parser.add_argument('--mx', type=int, default=int(os.getenv('MX', 0)), help='压缩等级，默认为0即仅储存')
+    parser.add_argument('--mmt', type=int, default=int(os.getenv('MMT', 4)), help='解压缩线程数')
+    parser.add_argument('--volumes', type=str, default=os.getenv('VOLUMES', '4g'), help='分卷大小')
+    parser.add_argument('--logfile', type=str, default=os.getenv('LOGFILE', 'AutoRclone.log'), help='日志文件路径')
+    parser.add_argument('--depth', type=int, default=int(os.getenv('DEPTH', 0)), help='使用路径中的目录作为最终文件夹名的探测深度')
 
-    # 解析参数
     args = parser.parse_args()
     return args
 
-
 if __name__ == "__main__":
     args = main()
-    # 使用解析的参数
+    # Use parsed arguments
     MAX_TASKS = args.max_tasks
     THREAD = args.thread
     db_file = args.db_file
@@ -210,18 +210,19 @@ if __name__ == "__main__":
     volumes = args.volumes
     logfile = args.logfile
     depth = args.depth
-    # 阶段使用的队列
+
+    # Queues for each stage
     download_queue, decompress_queue, compress_queue, upload_queue = [
         queue.Queue(maxsize=MAX_TASKS) for _ in range(4)
     ]
 
-    # 初始化
+    # Initialize
     ownrclone = OwnRclone(db_file, rclone)
     process = ownrclone.start_rclone()
     fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True)
 
-    # 启动
+    # Start
     start()
 
-    # 结束进程
+    # Terminate process
     process.kill()
