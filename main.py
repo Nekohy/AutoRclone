@@ -159,10 +159,10 @@ def transfer(tasks):
 
 def main():
     lsjson = ownrclone.lsjson(src, args={"recurse": True, "filesOnly": True, "noMimeType": True, "noModTime": True})["list"]
-    #todo 临时补丁
+    #todo 临时补丁,分离驱动器和名称，前者是不带驱动器的
     srcfs,_ = ownrclone.extract_parts(src)
     # 过滤文件列表
-    filter_list = fileprocess.filter_files(lsjson,srcfs)
+    filter_list = fileprocess.filter_files(lsjson,srcfs,depth)
     # 写入到sqlite3(不必担心覆盖问题)
     ownrclone.insert_data(filter_list)
     # 读取sqlite3数据,只读取未完成的数据
@@ -187,7 +187,7 @@ if __name__ == "__main__":
     # 临时目录
     tmp = "./tmp"
     # 起源目录
-    src = "Alist:Baidu/BPFT2/"
+    src = "./before"
     # 终点目录
     dst = "Onedrive_Plan2:temp/"
     # 解压密码
@@ -202,6 +202,8 @@ if __name__ == "__main__":
     volumes = "4g"
     # log文件
     logfile = 'autorclone.log'
+    # 脚本使用路径中的目录作为最终文件夹名，该值代表探测深度。0表示使用文件名
+    depth = 1
     # 阶段使用的队列
     download_queue, decompress_queue, compress_queue, upload_queue = [
         queue.Queue(maxsize=MAX_TASKS) for _ in range(4)

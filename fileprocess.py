@@ -94,18 +94,18 @@ class FileProcess:
             logging.error(f"{src_fs}压缩过程中发生错误: {result.stderr}")
             raise PackError(f"{src_fs}压缩过程中发生错误: {result.stderr}")
 
-    def filter_files(self,file_list: List[Dict],fs:str=None) -> Dict[str, Dict]:
+    def filter_files(self, file_list: List[Dict], fs: str = None, depth: int = 0) -> Dict[str, Dict]:
         """
-        按基础文件名和Path分类文件，并计算这些文件的总大小。
+        按基础文件名和路径分类文件，并计算这些文件的总大小。
 
         Args:
             file_list (List[Dict]): 包含文件信息的字典列表，每个字典包含 'Name' 和 'Path' 键。
-            fs: 添加到文件名前的附加路径 例如 Alist:
+            fs: 添加到文件名前的附加路径，例如 Alist:
+            depth: 使用路径中的目录作为基础文件名的深度。0 表示使用文件名。
 
         Returns:
             Dict[str, Dict]: 嵌套字典，第一层键为基础文件名，
                              值为包含 'paths' 列表和 'total_size' 的字典。
-
         """
         # 定义压缩类型及其匹配模式的正则表达式
         patterns = {
@@ -122,12 +122,22 @@ class FileProcess:
 
         for file in file_list:
             name = file.get('Name', '')
-            path = os.path.join(fs,file.get('Path', '')).replace('\\', '/') if fs else file.get('Path', '')
+            path = os.path.join(fs, file.get('Path', '')).replace('\\', '/') if fs else file.get('Path', '')
             size = file.get('Size', 0)
             matched = False  # 标记文件是否已被匹配
 
+            # 根据 depth 参数决定基础文件名
+            if depth == 0:
+                base_name = name
+            else:
+                path_parts = path.split('/')
+                if len(path_parts) >= depth:
+                    base_name = path_parts[-depth]
+                else:
+                    base_name = name  # 如果深度超出路径长度，使用文件名
+
             for file_type, pattern in patterns.items():
-                match = pattern.match(name)
+                match = pattern.match(base_name)
                 if match:
                     base_name = match.group('base')
                     if base_name not in categorized:
