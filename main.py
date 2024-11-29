@@ -68,19 +68,12 @@ def get_name(name):
     upload = os.path.join(dst, name).replace("\\", "/")
     return {"download":download, "decompress":decompress, "compress":compress, "upload":upload}
 
-def wait_job(jobid):
-    while True:
-        status = ownrclone.jobstatus(jobid)
-        # 这个progress是不是没用（（
-        # print(status.get("progress"))
-        if status["finished"]:
-            if status["success"] is False:
-                raise RcloneError(f"{jobid}失败")
-            else:
-                return status["output"]
-        else:
-            logging.debug(f"当前{jobid}进度{status.get('progress')}")
-        time.sleep(heart)
+def get_job_status(jobid):
+    status = ownrclone.jobstatus(jobid)
+    if status["success"] is False:
+        raise RcloneError(f"{jobid}失败")
+    else:
+        return status["output"]
 
 def worker():
     ownrclone = OwnRclone(db_file, rclone)
@@ -93,7 +86,7 @@ def worker():
                     name = download_task[0]
                     for file in download_task[1]["paths"]:
                         jobid = ownrclone.copyfile(file,get_name(name)["download"], replace_name=None)
-                        wait_job(jobid)
+                        get_job_status(jobid)
                     decompress_queue.put(name)
                     step += 1
                     logging.info(f"下载步骤完成: {name}")
@@ -107,15 +100,14 @@ def worker():
 
             if step == 2:
                 with manage_queue(compress_queue) as name:
-                    fileprocess.compress(str(get_name(name)['decompress']), str(get_name(name)['compress']), password=password, mx=mx, volumes=volumes)
-                    upload_queue.put(name)
+                    jobid = ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
+                    get_job_status(jobid)
                 step += 1
                 logging.info(f"压缩步骤完成: {get_name(name)['compress']}")
 
             if step == 3:
                 with manage_queue(upload_queue) as name:
-                    jobid = ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
-                    wait_job(jobid)
+                    ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
                 step += 1
                 logging.info(f"上传步骤完成: {get_name(name)['upload']}")
             status = 1
@@ -177,7 +169,7 @@ def main():
     parser = argparse.ArgumentParser(description="自动化任务处理脚本")
 
     # 添加命令行参数
-    parser.add_argument('--rclone', type=str, help='rclone文件路径')
+    parser.add_argument('--rclone', type=str,help='rclone文件路径')
     parser.add_argument('--p7zip_file', type=str, help='7zip文件路径')
     parser.add_argument('--src', type=str, help='起源目录路径')
     parser.add_argument('--dst', type=str, help='终点目录路径')
@@ -192,7 +184,7 @@ def main():
     parser.add_argument('--mmt', type=int, default=4, help='解压缩线程数')
     parser.add_argument('--volumes', type=str, default='4g', help='分卷大小')
     parser.add_argument('--logfile', type=str, default='AutoRclone.log', help='日志文件路径')
-    parser.add_argument('--depth', type=int, default=0, help='使用路径中的目录作为最终文件夹名的探测深度')
+    parser.add_argument('--depth', type=int, default=0, help='使用路径中的目录作为最终文件夹名的探测深度,例如a:b/c/d.zip 设置1则压缩后为c的名称')
 
     # 解析参数
     args = parser.parse_args()

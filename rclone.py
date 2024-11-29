@@ -51,7 +51,6 @@ class Rclone:
             "dstFs": dst,
             "createEmptySrcDirs": True
         }
-        json.update({"_async": True})
         return self.__requests("/sync/copy",json)
 
     def copyfile(self,srcfs,srcremote,dstfs,dstremote):
@@ -61,7 +60,6 @@ class Rclone:
             "dstFs": dstfs,
             "dstRemote": dstremote,
         }
-        json.update({"_async": True})
         return self.__requests("/operations/copyfile",json)
 
     def movefile(self, srcfs, srcremote, dstfs, dstremote):
@@ -71,7 +69,6 @@ class Rclone:
             "dstFs": dstfs,
             "dstRemote": dstremote,
         }
-        json.update({"_async": True})
         return self.__requests("/operations/movefile", json)
 
     def purge(self,fs,remote):
@@ -79,7 +76,6 @@ class Rclone:
             "fs": fs,
             "remote": remote
         }
-        json.update({"_async": True})
         return self.__requests("/operations/purge",json)
     def joblist(self):
         return self.__requests("/job/list",{})
@@ -114,7 +110,6 @@ class Rclone:
             "createEmptySrcDirs": True,
             "deleteEmptySrcDirs": True
         }
-        json.update({"_async": True})
         return self.__requests("/sync/move",json)
 
 class OwnRclone(Rclone):
