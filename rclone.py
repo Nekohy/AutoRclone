@@ -234,7 +234,7 @@ class OwnRclone(Rclone):
         pattern = re.compile(r'^(.*?)([:/])(.*)')
         match = pattern.match(s)
         if match:
-            prefix_part = match.group(1) if match.group(1) else '.'
+            prefix_part = match.group(1) if match.group(1) else '/'
             separator = match.group(2)
             suffix = match.group(3)
 
@@ -242,7 +242,7 @@ class OwnRclone(Rclone):
             if separator == ':':
                 prefix = prefix_part + separator
             else:
-                prefix = prefix_part if prefix_part else '.'
+                prefix = prefix_part
 
             return prefix, suffix
         else:
