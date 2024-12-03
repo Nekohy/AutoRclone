@@ -236,13 +236,15 @@ class OwnRclone(Rclone):
         if match:
             prefix_part = match.group(1) if match.group(1) else '/'
             separator = match.group(2)
-            suffix = match.group(3)
+            suffix_part = match.group(3)
 
             # 如果分隔符是 ':', 将其包含在 prefix 中
             if separator == ':':
                 prefix = prefix_part + separator
+                suffix = suffix_part
             else:
                 prefix = prefix_part
+                suffix = "/" + suffix_part
 
             return prefix, suffix
         else:
