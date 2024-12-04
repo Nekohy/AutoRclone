@@ -70,6 +70,7 @@ def worker():
                     ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
                 step += 1
                 logging_capture.info(f"上传步骤完成: {get_name(name)['upload']}")
+
             status = 1
             error_msg = None
             # 成功了删除file

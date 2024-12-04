@@ -21,12 +21,13 @@ class Rclone:
         self.logging = logging
 
     def __requests(self,params,json):
+        self.logging.debug(f"当前Rclone请求json:\n {json}")
         result = requests.post(f"http://{self.link}{params}",
                                json=json)
-
         if result.status_code != 200:
             self.logging.error(f"Rclone异常，返回值为{result.text}")
             raise RcloneError(f"Rclone异常，返回值为{result.text}")
+        self.logging.debug(f"当前Rclone返回:\n {result.text}")
         return result.json()
 
     def start_rclone(self):
