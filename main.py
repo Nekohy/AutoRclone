@@ -34,7 +34,7 @@ def get_name(name):
     return {"download":download, "decompress":decompress, "compress":compress, "upload":upload}
 
 def worker():
-    ownrclone = OwnRclone(db_file, rclone, logging=logging)
+    ownrclone = OwnRclone(db_file, rclone, logging=logging_capture)
     while True:
         step = 0
         try:
@@ -46,41 +46,41 @@ def worker():
                         ownrclone.copyfile(file,get_name(name)["download"], replace_name=None)
                     decompress_queue.put(name)
                     step += 1
-                    logging.info(f"下载步骤完成: {name}")
+                    logging_capture.info(f"下载步骤完成: {name}")
 
             if step == 1:
                 with manage_queue(decompress_queue) as name:
                     fileprocess.decompress(get_name(name)["download"], get_name(name)["decompress"], passwords=passwords)
                     compress_queue.put(name)
                     step += 1
-                    logging.info(f"解压步骤完成: {get_name(name)['decompress']}")
+                    logging_capture.info(f"解压步骤完成: {get_name(name)['decompress']}")
 
             if step == 2:
                 with manage_queue(compress_queue) as name:
                     ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
                 step += 1
-                logging.info(f"压缩步骤完成: {get_name(name)['compress']}")
+                logging_capture.info(f"压缩步骤完成: {get_name(name)['compress']}")
 
             if step == 3:
                 with manage_queue(upload_queue) as name:
                     ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
                 step += 1
-                logging.info(f"上传步骤完成: {get_name(name)['upload']}")
+                logging_capture.info(f"上传步骤完成: {get_name(name)['upload']}")
             status = 1
             error_msg = None
             # 成功了删除file
             ownrclone.purge(file)
         except NoRightPasswd as e:
-            logging.error(str(e))
+            logging_capture.error(str(e))
             status = 2
             error_msg = str(e)
         except (UnpackError, PackError, RcloneError, NoExistDecompressDir) as e:
-            logging.error(f"当前任务{name}出错{e}")
+            logging_capture.error(f"当前任务{name}出错{e}")
             status = 3
             error_msg = str(e)
         except Exception as e:
             status = 4
-            logging.error(f"当前任务{name}未知出错{e}")
+            logging_capture.error(f"当前任务{name}未知出错{e}")
             error_msg = str(e)
         # 如果不成功删除缓存 todo step检查，也就不用删了
         for del_task in ["download", "decompress", "compress", "upload"]:
@@ -116,7 +116,7 @@ def start():
     ownrclone.insert_data(filter_list)
     # 读取sqlite3数据,只读取未完成的数据
     tasks = ownrclone.read_data(status=0)
-    logging.info(f"已读取到{len(tasks)}条任务")
+    logging_capture.info(f"已读取到{len(tasks)}条任务")
     transfer(tasks)
 
 
@@ -171,10 +171,10 @@ if __name__ == "__main__":
     ]
 
     # Initialize
-    logging = setup_logger('AutoRclone', logfile, level=logging.INFO)
-    ownrclone = OwnRclone(db_file, rclone,logging)
+    logging_capture = setup_logger('AutoRclone', logfile, level=logging.INFO)
+    ownrclone = OwnRclone(db_file, rclone, logging_capture)
     process = ownrclone.start_rclone()
-    fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True,logging=logging)
+    fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True, logging=logging_capture)
 
     # Start
     start()
