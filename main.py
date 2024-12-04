@@ -159,7 +159,7 @@ def main():
     parser.add_argument('--volumes', type=str, default=os.getenv('VOLUMES', '4g'), help='分卷大小')
     parser.add_argument('--logfile', type=str, default=os.getenv('LOGFILE', 'AutoRclone.log'), help='日志文件路径')
     parser.add_argument('--depth', type=int, default=int(os.getenv('DEPTH', 0)), help='使用路径中的目录作为最终文件夹名的探测深度')
-    parser.add_argument('--loglevel',type=log_level_type,default=os.getenv('LOGLEVEL', logging.INFO), help='Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
+    parser.add_argument('--loglevel',type=log_level_type,default=os.getenv('LOGLEVEL', "INFO"), help='Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
 
     args = parser.parse_args()
     return args
@@ -190,7 +190,7 @@ if __name__ == "__main__":
     ]
 
     # Initialize
-    logging_capture = setup_logger('AutoRclone', logfile, level=logging.INFO)
+    logging_capture = setup_logger('AutoRclone', logfile, level=loglevel)
     ownrclone = OwnRclone(db_file, rclone, logging_capture)
     process = ownrclone.start_rclone()
     fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True, logging=logging_capture)
