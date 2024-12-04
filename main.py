@@ -3,14 +3,15 @@ import argparse
 import logging
 import os
 import queue
-import sys
 import threading
-from dotenv import load_dotenv
 from contextlib import contextmanager
+
+from dotenv import load_dotenv
 
 from exception import NoRightPasswd, UnpackError, PackError, RcloneError, NoExistDecompressDir
 from fileprocess import FileProcess
 from rclone import OwnRclone
+from set_logger import setup_logger
 
 
 @contextmanager
@@ -24,42 +25,6 @@ def manage_queue(queue):
     finally:
         queue.task_done()
 
-def setup_logger(logger_name, log_file, level=logging.DEBUG):
-    """
-    创建并配置一个日志记录器。
-
-    :param logger_name: 日志记录器的名称
-    :param log_file: 日志文件的路径
-    :param level: 日志级别
-    :return: 配置好的日志记录器
-    """
-    # 创建日志记录器
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(level)
-    logger.propagate = False  # 防止日志重复
-
-    # 检查是否已经添加过处理器
-    if not logger.handlers:
-        # 创建格式化器
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-        # 创建文件处理器
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
-        file_handler.setLevel(level)  # 设置文件处理器的日志级别
-        file_handler.setFormatter(formatter)
-
-        # 创建控制台处理器
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(level)  # 设置控制台处理器的日志级别
-        console_handler.setFormatter(formatter)
-
-        # 将处理器添加到日志记录器
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-
-    return logger
-
 def get_name(name):
     # 构建路径
     download = os.path.join(tmp, "download", name).replace("\\", "/")
@@ -69,7 +34,7 @@ def get_name(name):
     return {"download":download, "decompress":decompress, "compress":compress, "upload":upload}
 
 def worker():
-    ownrclone = OwnRclone(db_file, rclone)
+    ownrclone = OwnRclone(db_file, rclone, logging=logging)
     while True:
         step = 0
         try:
@@ -206,10 +171,10 @@ if __name__ == "__main__":
     ]
 
     # Initialize
-    ownrclone = OwnRclone(db_file, rclone)
-    process = ownrclone.start_rclone()
-    fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True)
     logging = setup_logger('AutoRclone', logfile, level=logging.INFO)
+    ownrclone = OwnRclone(db_file, rclone,logging)
+    process = ownrclone.start_rclone()
+    fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True,logging=logging)
 
     # Start
     start()

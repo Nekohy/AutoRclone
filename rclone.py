@@ -1,5 +1,4 @@
 # Rclone的调用
-import logging
 import os
 import re
 import sqlite3
@@ -12,19 +11,21 @@ from exception import RcloneError
 
 
 class Rclone:
-    def __init__(self,rclone):
+    def __init__(self,rclone,logging):
         # Rclone二进制文件
         self.rclone = rclone
         # 启动参数
         self.link = "127.0.0.1:4572"
         self.args = ["rcd","--rc-no-auth",f"--rc-addr={self.link}"]
+        # logging配置参数
+        self.logging = logging
 
     def __requests(self,params,json):
         result = requests.post(f"http://{self.link}{params}",
                                json=json)
 
         if result.status_code != 200:
-            logging.error(f"Rclone异常，返回值为{result.text}")
+            self.logging.error(f"Rclone异常，返回值为{result.text}")
             raise RcloneError(f"Rclone异常，返回值为{result.text}")
         return result.json()
 
@@ -118,8 +119,8 @@ class OwnRclone(Rclone):
     {"Path":"Baidu/test/圣剑传说/DIPXXZ","Name":"DIPXXZ","Size":-1,"MimeType":"inode/directory","ModTime":"2024-03-21T15:56:49Z","IsDir":true},
     {"Path":"Game/未分类/严阵以待/rune-ready.or.not.zip.012","Name":"rune-ready.or.not.zip.012","Size":4290772992,"MimeType":"application/octet-stream","ModTime":"2023-12-14T15:09:58Z","IsDir":false},
     """
-    def __init__(self, db_file:str, rclone):
-        super().__init__(rclone)
+    def __init__(self, db_file:str, rclone:str,logging:str):
+        super().__init__(rclone,logging)
         self.sqlite3 = sqlite3.connect(db_file) # sqlite3文件路径
         self.cursor = self.sqlite3.cursor()
         self._open_database()
