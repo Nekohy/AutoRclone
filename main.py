@@ -150,6 +150,7 @@ def main():
     parser.add_argument('--volumes', type=str, default=os.getenv('VOLUMES', '4g'), help='分卷大小')
     parser.add_argument('--logfile', type=str, default=os.getenv('LOGFILE', 'AutoRclone.log'), help='日志文件路径')
     parser.add_argument('--depth', type=int, default=int(os.getenv('DEPTH', 0)), help='使用路径中的目录作为最终文件夹名的探测深度')
+    parser.add_argument('--loglevel', type=int, default=os.getenv('LOGLEVEL', logging.INFO), help='LOG等级')
 
     args = parser.parse_args()
     return args
@@ -172,6 +173,7 @@ if __name__ == "__main__":
     volumes = args.volumes
     logfile = args.logfile
     depth = args.depth
+    loglevel = args.loglevel
 
     # Queues for each stage
     download_queue, decompress_queue, compress_queue, upload_queue = [
