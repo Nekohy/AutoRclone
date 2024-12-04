@@ -70,6 +70,7 @@ def worker():
                     # noinspection PyTypeChecker
                     fileprocess.compress(get_name(name)['decompress'], get_name(name)['compress'], password=password,
                                          mx=mx, volumes=volumes)
+                    upload_queue.put(name)
                 step += 1
                 logging_capture.info(f"压缩步骤完成: {get_name(name)['compress']}")
 
