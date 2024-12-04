@@ -155,8 +155,8 @@ def start():
     transfer(tasks)
 
 
-# Load environment variables from .env file
-load_dotenv()
+# 覆盖系统内变量
+load_dotenv(override=True)
 
 def main():
     parser = argparse.ArgumentParser(description="自动化任务处理脚本")
