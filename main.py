@@ -25,6 +25,14 @@ def manage_queue(queue):
     finally:
         queue.task_done()
 
+def log_level_type(level_str):
+    # 转换Env的Log Level
+    try:
+        # 将字符串转为大写，并根据 logging 的属性进行解析
+        return getattr(logging, level_str.upper())
+    except AttributeError:
+        raise argparse.ArgumentTypeError(f"Invalid log level: {level_str}")
+
 def get_name(name):
     # 构建路径
     download = os.path.join(tmp, "download", name).replace("\\", "/")
@@ -151,7 +159,7 @@ def main():
     parser.add_argument('--volumes', type=str, default=os.getenv('VOLUMES', '4g'), help='分卷大小')
     parser.add_argument('--logfile', type=str, default=os.getenv('LOGFILE', 'AutoRclone.log'), help='日志文件路径')
     parser.add_argument('--depth', type=int, default=int(os.getenv('DEPTH', 0)), help='使用路径中的目录作为最终文件夹名的探测深度')
-    parser.add_argument('--loglevel', type=int, default=os.getenv('LOGLEVEL', logging.INFO), help='LOG等级')
+    parser.add_argument('--loglevel',type=log_level_type,default=os.getenv('LOGLEVEL', logging.INFO), help='Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
 
     args = parser.parse_args()
     return args
