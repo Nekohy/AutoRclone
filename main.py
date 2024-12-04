@@ -33,6 +33,8 @@ def get_name(name):
     upload = os.path.join(dst, name).replace("\\", "/")
     return {"download":download, "decompress":decompress, "compress":compress, "upload":upload}
 
+
+
 def worker():
     ownrclone = OwnRclone(db_file, rclone, logging=logging_capture)
     while True:
@@ -57,6 +59,7 @@ def worker():
 
             if step == 2:
                 with manage_queue(compress_queue) as name:
+                    # noinspection PyTypeChecker
                     fileprocess.compress(get_name(name)['decompress'], get_name(name)['compress'], password=password,
                                          mx=mx, volumes=volumes)
                 step += 1
@@ -84,8 +87,12 @@ def worker():
             logging_capture.error(f"当前任务{name}未知出错{e}")
             error_msg = str(e)
         # 如果不成功删除缓存 todo step检查，也就不用删了
-        for del_task in ["download", "decompress", "compress", "upload"]:
-            ownrclone.purge(get_name(name)[del_task])
+        # noinspection PyBroadException
+        try:
+            for del_task in ["download", "decompress", "compress", "upload"]:
+                ownrclone.purge(get_name(name)[del_task])
+        except:
+            pass
         # 写入数据库
         # noinspection PyUnboundLocalVariable
         # 虽然我也不知道Pycharm为什么会报错这个（
