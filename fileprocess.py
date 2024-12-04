@@ -17,7 +17,7 @@ class FileProcess:
         # 自动删除中间文件
         self.autodelete = autodelete
 
-    def decompress(self,src_fs,dst_fs,passwords:list=[None,]):
+    def decompress(self,src_fs,dst_fs,passwords:list=[]):
         """
         解压文件到指定路径
         :param passwords: 可用的密码列表
@@ -25,6 +25,7 @@ class FileProcess:
         :param dst_fs: 解压工作路径 例如 “./tmp”
         :return: 解压后文件所在路径
         """
+        passwords.append(None)
         if not os.path.exists(src_fs):
             logging.error(f"错误：源文件夹 {src_fs} 不存在")
             raise NoExistDecompressDir(f"错误：源文件夹 {src_fs} 不存在")

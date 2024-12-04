@@ -171,7 +171,7 @@ def main():
     parser.add_argument('--max_tasks', type=int, default=int(os.getenv('MAX_TASKS', 2)), help='每个阶段的最大任务数量，默认2')
     parser.add_argument('--thread', type=int, default=int(os.getenv('THREAD', 8)), help='线程数，建议是MAX_TASKS的4倍，默认8')
     parser.add_argument('--db_file', type=str, default=os.getenv('DB_FILE', './data.db'), help='数据库文件路径')
-    parser.add_argument('--tmp', type=str, default=os.getenv('TMP', '/root/tmp'), help='临时目录路径')
+    parser.add_argument('--tmp', type=str, default=os.getenv('TMP', './tmp'), help='临时目录路径')
     parser.add_argument('--mx', type=int, default=int(os.getenv('MX', 0)), help='压缩等级，默认为0即仅储存')
     parser.add_argument('--mmt', type=int, default=int(os.getenv('MMT', 4)), help='解压缩线程数')
     parser.add_argument('--volumes', type=str, default=os.getenv('VOLUMES', '4g'), help='分卷大小')
@@ -209,6 +209,7 @@ if __name__ == "__main__":
     ownrclone = OwnRclone(db_file, rclone)
     process = ownrclone.start_rclone()
     fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True)
+    logging = setup_logger('AutoRclone', logfile, level=logging.INFO)
 
     # Start
     start()
