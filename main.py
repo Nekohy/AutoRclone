@@ -87,12 +87,12 @@ def worker():
             logging_capture.error(f"当前任务{name}未知出错{e}")
             error_msg = str(e)
         # 如果不成功删除缓存 todo step检查，也就不用删了
-        # noinspection PyBroadException
-        try:
             for del_task in ["download", "decompress", "compress", "upload"]:
-                ownrclone.purge(get_name(name)[del_task])
-        except:
-            pass
+                # noinspection PyBroadException
+                try:
+                    ownrclone.purge(get_name(name)[del_task])
+                except:
+                    pass
         # 写入数据库
         # noinspection PyUnboundLocalVariable
         # 虽然我也不知道Pycharm为什么会报错这个（
