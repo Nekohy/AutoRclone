@@ -45,19 +45,20 @@ def worker():
                     for file in download_task[1]["paths"]:
                         ownrclone.copyfile(file,get_name(name)["download"], replace_name=None)
                     decompress_queue.put(name)
-                    step += 1
-                    logging_capture.info(f"下载步骤完成: {name}")
+                step += 1
+                logging_capture.info(f"下载步骤完成: {name}")
 
             if step == 1:
                 with manage_queue(decompress_queue) as name:
                     fileprocess.decompress(get_name(name)["download"], get_name(name)["decompress"], passwords=passwords)
                     compress_queue.put(name)
-                    step += 1
-                    logging_capture.info(f"解压步骤完成: {get_name(name)['decompress']}")
+                step += 1
+                logging_capture.info(f"解压步骤完成: {get_name(name)['decompress']}")
 
             if step == 2:
                 with manage_queue(compress_queue) as name:
-                    ownrclone.move(source=get_name(name)['compress'], dst=get_name(name)['upload'])
+                    fileprocess.compress(get_name(name)['decompress'], get_name(name)['compress'], password=password,
+                                         mx=mx, volumes=volumes)
                 step += 1
                 logging_capture.info(f"压缩步骤完成: {get_name(name)['compress']}")
 
