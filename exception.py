@@ -6,12 +6,16 @@ class NoRightPasswd(ValueError):
     # 没有正确的密码错误
     pass
 
-class PackError(Exception):
+class PackError(ValueError):
     # 压缩错误
     pass
 
-class RcloneError(Exception):
+class RcloneError(ValueError):
     pass
 
-class NoExistDecompressDir(Exception):
+class NoExistDecompressDir(ValueError):
+    pass
+
+class FileTooLarge(ValueError):
+    # 文件过大
     pass

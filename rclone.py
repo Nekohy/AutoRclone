@@ -79,10 +79,13 @@ class Rclone:
             "remote": remote
         }
         return self.__requests("/operations/purge",json)
+
     def joblist(self):
         return self.__requests("/job/list",{})
+
     def jobstatus(self,jobid):
         return self.__requests("/job/status",json=jobid)
+
     def lsjson(self,fs,remote,args:dict):
         # args 很建议为 {recurse: True,filesOnly: True,noMimeType: True,noModTime: True}
         """
@@ -113,6 +116,25 @@ class Rclone:
             "deleteEmptySrcDirs": True
         }
         return self.__requests("/sync/move",json)
+
+    def du(self, local_dir="/"):
+        """
+        获取本地磁盘空间信息
+        :param local_dir: 传递本地路径
+        :return:
+        {
+            "dir": local_dir,
+            "info": {
+                "Available": 0,
+                "Free": 0,
+                "Total": 0
+            }
+        }
+        """
+        json = {
+            "dir": local_dir,
+        }
+        return self.__requests("core/du", json)
 
 class OwnRclone(Rclone):
     # 一些自用的数据库创建和优化一下官方HTTP那令人窒息的参数

@@ -1,5 +1,6 @@
 # 使用7z官方的二进制文件
 import os
+import shutil
 import subprocess
 import re
 from typing import List, Dict
@@ -158,3 +159,13 @@ class FileProcess:
             categorized[base]['paths'] = sorted(categorized[base]['paths'])
 
         return categorized
+
+    @staticmethod
+    def get_free_size(fs):
+        """
+        :param fs: 本地文件路径
+        :return: 剩余空间大小（字节）
+        """
+        # 获取磁盘使用情况
+        total, used, free = shutil.disk_usage(fs)
+        return int(free)
