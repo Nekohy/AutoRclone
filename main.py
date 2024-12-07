@@ -4,9 +4,11 @@ import logging
 import os
 import queue
 import threading
+import concurrent.futures
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from queue import Queue
 
 from dotenv import load_dotenv
 
@@ -36,11 +38,17 @@ class ThreadStatus:
     decompress_continue_event: threading.Event = field(default_factory=threading.Event)
     compress_continue_event: threading.Event = field(default_factory=threading.Event)
     upload_continue_event: threading.Event = field(default_factory=threading.Event)
-    # 线程
-    download_threads:list = field(default_factory=list)
-    decompress_threads:list = field(default_factory=list)
-    compress_threads:list = field(default_factory=list)
-    upload_threads:list = field(default_factory=list)
+    # Queue用来储存当前*所有*任务的信息
+    download_queue: queue.Queue = field(default_factory=queue.Queue)
+    decompress_queue:queue.Queue = field(default_factory=queue.Queue)
+    compress_queue:queue.Queue = field(default_factory=queue.Queue)
+    upload_queue:queue.Queue = field(default_factory=queue.Queue)
+    # Threads用于储存所有的Thread
+    download_threads: concurrent.futures.ThreadPoolExecutor = field(init=False)
+    decompress_threads: concurrent.futures.ThreadPoolExecutor = field(init=False)
+    compress_threads: concurrent.futures.ThreadPoolExecutor = field(init=False)
+    upload_threads: concurrent.futures.ThreadPoolExecutor = field(init=False)
+
 
     def __post_init__(self):
         self._totaldisk = self._freedisk = fileprocess.get_free_size(tmp)
@@ -48,6 +56,10 @@ class ThreadStatus:
         self.decompress_continue_event.set()
         self.compress_continue_event.set()
         self.upload_continue_event.set()
+        self.download_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
+        self.decompress_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
+        self.compress_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
+        self.upload_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
 
 
     def waiting_release_disk(self):
@@ -73,14 +85,14 @@ class ThreadStatus:
 
     @property
     def throttling(self):
-        # 返回当前流控数据
+        # 返回当前任务流控数据
         return {"totaldisk":self._totaldisk,
                 "pausedisk":self._pausedisk,
                 "num":{
-                    "download_num":len(self.download_threads),
-                    "decompress_num":len(self.decompress_threads),
-                    "compress_num":len(self.compress_threads),
-                    "upload_num":len(self.upload_threads)
+                    "download_num":self.download_queue.qsize(),
+                    "decompress_num":self.decompress_queue.qsize(),
+                    "compress_num":self.compress_queue.qsize(),
+                    "upload_num":self.upload_queue.qsize()
                 }}
 
     @throttling.setter
@@ -99,18 +111,9 @@ class ThreadStatus:
             t = threading.Thread(target=self.waiting_release_disk, daemon=True)
             t.start()
 
-        # 锁定和解锁线程
-        self.download_continue_event.clear() if len(
-            self.download_threads) >= self.max_thread else self.download_continue_event.set()
-        self.decompress_continue_event.clear() if len(
-            self.decompress_threads) >= self.max_thread else self.decompress_continue_event.set()
-        self.compress_continue_event.clear() if len(
-            self.compress_threads) >= self.max_thread else self.compress_continue_event.set()
-        self.upload_continue_event.clear() if len(
-            self.upload_threads) >= self.max_thread else self.upload_continue_event.set()
-
 @dataclass
 class ProcessThread:
+    #todo 传入Rclone的参数来启动
     # 文件信息
     files_info:list = field(default_factory=list)
     # 任务线程状态，set则可以继续运行
@@ -121,21 +124,18 @@ class ProcessThread:
 
     def __post_init__(self):
         self.ownrclone = OwnRclone(db_file, rclone, logging=logging_capture)
-        # 去掉后缀的文件名
-        self.name:str = self.files_info[0]
+
+    def _parse_files_info(self):
+        # 解析文件信息
+        name:str = self.files_info[0]
         # 所有对应的文件路径和总大小
-        self.paths:list = self.files_info[1][0]
-        self.sizes:int = self.files_info[1][1]
-        # 获取路径
-        paths_dict = self.get_name(self.name)
-        self.download = paths_dict['download']
-        self.decompress = paths_dict['decompress']
-        self.compress = paths_dict['compress']
-        self.upload = paths_dict['upload']
+        paths:list = self.files_info[1][0]
+        sizes:int = self.files_info[1][1]
+        return name, paths, sizes
 
     @staticmethod
     # noinspection PyUnresolvedReferences
-    def get_name(name):
+    def _get_name(name):
         # 构建路径,防止Windows作妖
         download = os.path.join(tmp, "download", name).replace("\\", "/")
         decompress = os.path.join(tmp, "decompress", name).replace("\\", "/")
@@ -143,70 +143,106 @@ class ProcessThread:
         upload = os.path.join(dst, name).replace("\\", "/")
         return {"download": download, "decompress": decompress, "compress": compress, "upload": upload}
 
+    """
+    接下来的四个都是独立的线程，传递Queues中的files_info
+    """
 
-    def download_thread(self):
+    @classmethod
+    def download_thread(cls,files_info):
         # 传递文件大小进行流控
-        ThreadStatus.throttling = self.sizes
+        name,paths,sizes = cls._parse_files_info(files_info)
+        # 创建ownrclone实例
+        ownrclone = OwnRclone(db_file, rclone, logging=logging_capture)
+        # 正常流控
+        ThreadStatus.throttling = sizes
         ProcessThread.download_continue_event.wait()
         ThreadStatus.download_continue_event.wait()
-        ownrclone.copyfile(self.paths, self.download, replace_name=None)
+        try:
+            #todo 增加错误重试
+            ownrclone.copyfile(paths, cls._get_name("download"), replace_name=None)
+            logging_capture.info(f"下载步骤完成: {name}")
+        except RcloneError as e:
+            logging_capture.error(f"当前任务{name}下载过程出错{e}")
+        except Exception as e:
+            logging_capture.error(f"当前任务{name}下载过程未知出错{e}")
         # 释放空间
-        ThreadStatus.throttling = -self.sizes
-        logging_capture.info(f"下载步骤完成: {self.name}")
+        ThreadStatus.throttling = -sizes
+        # 添加到解压Queue当前files_info
+        ThreadStatus.decompress_queue.put(files_info)
 
-
-    def decompress_thread(self):
+    @classmethod
+    def decompress_thread(cls,files_info):
         # 传递文件大小进行流控
-        ThreadStatus.throttling = self.sizes
+        name,paths,sizes = cls._parse_files_info(files_info)
         ProcessThread.decompress_continue_event.wait()
         ThreadStatus.decompress_continue_event.wait()
-        fileprocess.decompress(self.download, self.decompress, passwords=passwords)
+        try:
+            #todo 增加错误重试,这里有坑，不能多次解压已成功的，没有抓响应码
+            fileprocess.decompress(cls._get_name("download"), cls._get_name("decompress"), passwords=passwords)
+            logging_capture.info(f"解压步骤完成: {name}")
+        except UnpackError or NoExistDecompressDir as e:
+            logging_capture.error(f"当前任务{name}解压过程出错{e}")
+        except Exception as e:
+            logging_capture.error(f"当前任务{name}解压过程未知出错{e}")
         # 释放空间
-        ThreadStatus.throttling = -self.sizes
-        logging_capture.info(f"解压步骤完成: {self.name}")
+        ThreadStatus.throttling = -sizes
+        ThreadStatus.compress_queue.put(files_info)
 
-
-    def compress_thread(self):
+    @classmethod
+    def compress_thread(cls,files_info):
         # 传递文件大小进行流控
-        ThreadStatus.throttling = self.sizes
+        name,paths,sizes = cls._parse_files_info(files_info)
         ProcessThread.compress_continue_event.wait()
         ThreadStatus.compress_continue_event.wait()
-        # noinspection PyTypeChecker
-        fileprocess.compress(self.decompress, self.compress, password=password,
-                             mx=mx, volumes=volumes)
+        try:
+            # noinspection PyTypeChecker
+            fileprocess.compress(cls._get_name("decompress"), cls._get_name("compress"), password=password,
+                                 mx=mx, volumes=volumes)
+            logging_capture.info(f"压缩步骤完成: {name}")
+        except PackError as e:
+            logging_capture.error(f"当前任务{name}压缩过程出错{e}")
+        except Exception as e:
+            logging_capture.error(f"当前任务{name}压缩过程未知出错{e}")
         # 释放空间
-        ThreadStatus.throttling = -self.sizes
-        logging_capture.info(f"压缩步骤完成: {self.name}")
+        ThreadStatus.throttling = -sizes
+        ThreadStatus.upload_queue.put(files_info)
 
-
-    def upload_thread(self):
+    @classmethod
+    def upload_thread(cls,files_info):
+        # 传递文件大小进行流控
+        name,paths,sizes = cls._parse_files_info(files_info)
+        # 创建ownrclone实例
+        ownrclone = OwnRclone(db_file, rclone, logging=logging_capture)
         ProcessThread.upload_continue_event.wait()
         ThreadStatus.upload_continue_event.wait()
-        ownrclone.copyfile(self.compress, self.upload, replace_name=None)
+        try:
+            ownrclone.copyfile(cls._get_name("compress"), cls._get_name("upload"), replace_name=None)
+            logging_capture.info(f"上传步骤完成: {name}")
+        except RcloneError as e:
+            logging_capture.error(f"当前任务{name}上传过程出错{e}")
+        except Exception as e:
+            logging_capture.error(f"当前任务{name}上传过程未知出错{e}")
         # 释放空间
-        ThreadStatus.throttling = -self.sizes
-        logging_capture.info(f"上传步骤完成: {self.name}")
+        ThreadStatus.throttling = -sizes
 
+    @staticmethod
+    def _start_threads(queue: Queue, threads: concurrent.futures.ThreadPoolExecutor) -> None:
+        # 把每个ThreadStatusQueue的内容用来启动线程
+        while not queue.empty():
+            # 启动线程并添加到线程池
+            t = queue.get()
+            t.start()
+            threads.submit(t)
+            threads.add_done_callback()
 
     @classmethod
     def start_threads(cls):
-        # 启动线程并添加进线程池
-        thread_configs = [
-            (cls.download_thread, ThreadStatus.download_threads),
-            (cls.decompress_thread, ThreadStatus.decompress_threads),
-            (cls.compress_thread, ThreadStatus.compress_threads),
-            (cls.upload_thread, ThreadStatus.upload_threads)
-        ]
-
-        for target, thread_list in thread_configs:
-            thread = threading.Thread(target=target, daemon=True)
-            thread_list.append(thread)
-
-
-
-
-
-
+        # 循环把每个ThreadStatus Queue的内容用来启动线程
+        while True:
+            cls._start_threads(ThreadStatus.download_queue,ThreadStatus.download_threads)
+            cls._start_threads(ThreadStatus.decompress_queue,ThreadStatus.decompress_threads)
+            cls._start_threads(ThreadStatus.compress_queue,ThreadStatus.compress_threads)
+            cls._start_threads(ThreadStatus.upload_queue,ThreadStatus.upload_threads)
 
 
 @contextmanager
@@ -228,26 +264,6 @@ def log_level_type(level_str):
     except AttributeError:
         raise argparse.ArgumentTypeError(f"Invalid log level: {level_str}")
 
-def create_worker(tasks):
-    """
-    创建任务，主线程
-    :param tasks:
-    :return:
-    """
-    # 创建管理线程
-    threads = []
-    for _ in range(MAX_THREADS):
-        t = threading.Thread(target=control_worker, daemon=True)
-        t.start()
-        threads.append(t)
-    # 添加任务到下载队列
-    for task in tasks.items():
-        download_queue.put(task)
-    # 等待所有队列完成任务
-    download_queue.join()
-    decompress_queue.join()
-    compress_queue.join()
-    upload_queue.join()
 
 def load_env():
     # 读取环境变量
@@ -309,11 +325,6 @@ if __name__ == "__main__":
     depth = args.depth
     loglevel = args.loglevel
     heart = args.heart
-
-    # Queues for each stage
-    download_queue, decompress_queue, compress_queue, upload_queue = [
-        queue.Queue(maxsize=MAX_THREADS) for _ in range(4)
-    ]
 
     # 初始化Rclone log和class实例
     logging_capture = setup_logger('AutoRclone', logfile, level=loglevel)

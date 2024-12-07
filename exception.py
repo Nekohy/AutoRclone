@@ -19,3 +19,5 @@ class NoExistDecompressDir(ValueError):
 class FileTooLarge(ValueError):
     # 文件过大
     pass
+
+#todo 可以添加一个容量不足报错
