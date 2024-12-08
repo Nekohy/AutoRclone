@@ -330,7 +330,7 @@ def main():
     # 读取sqlite3数据,只读取未完成的数据
     tasks = database.read_data(status=0)
     # 写入到Queue
-    for task in tasks.items:
+    for task in tasks.items():
         threadstatus.download_queue.put(task)
     logging_capture.info(f"已读取到{len(tasks)}条任务")
     # 启动线程
