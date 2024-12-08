@@ -366,7 +366,7 @@ if __name__ == "__main__":
     rclone = OwnRclone(rclone)
     fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True)
     # 传递空间，若为0则不限制，否则限制空间
-    threadstatus = ThreadStatus(max_thread=max_threads, heart=heart, max_spaces=max_spaces if max_spaces == 0 else fileprocess.get_free_size(tmp))
+    threadstatus = ThreadStatus(max_thread=max_threads, heart=heart, max_spaces=fileprocess.get_free_size(tmp) if max_spaces == 0 else max_spaces)
 
     # 启动rclone
     rclone.start_rclone()
