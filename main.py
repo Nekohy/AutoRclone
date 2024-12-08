@@ -125,8 +125,8 @@ class ProcessThread:
         # 解析文件信息
         name: str = files_info[0]
         # 所有对应的文件路径和总大小
-        paths: list = files_info[1][0]
-        sizes: int = files_info[1][1]
+        paths: list = files_info[1]['paths']
+        sizes: int = files_info[1]['total_size']
         return name, paths, sizes
 
     @staticmethod
