@@ -139,9 +139,10 @@ class DataBase:
     def __post_init__(self):
         self.database = sqlite3.connect(self.db_file)
         self.cursor = self.database.cursor()
+        self._init_database()
 
-    def _open_database(self):
-        """打开数据库和表格"""
+    def _init_database(self):
+        """初始化数据库和表格"""
         # 创建 base_files 表
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS base_files (
@@ -149,8 +150,8 @@ class DataBase:
                 basename TEXT UNIQUE,
                 total_size INTEGER,
                 status INTEGER DEFAULT 0,  -- 新增状态列，默认值为0（未完成）
-                step INTEGER DEFAULT 0,    -- 新增步骤列，默认值为0（未完成）
-                log TEXT                    -- 新增日志列
+                step INTEGER DEFAULT 0,    -- 新增步骤列，默认值为0（未开始）
+                log TEXT                    -- 日志列
             )
         ''')
 
