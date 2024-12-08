@@ -314,9 +314,10 @@ def load_env():
     parser.add_argument('--logfile', type=str, default=os.getenv('LOGFILE', 'AutoRclone.log'), help='日志文件路径')
     parser.add_argument('--depth', type=int, default=int(os.getenv('DEPTH', 0)), help='使用路径中的目录作为最终文件夹名的探测深度')
     parser.add_argument('--loglevel',type=log_level_type,default=os.getenv('LOGLEVEL', "INFO"), help='Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
-
+    parser.add_argument('--console_log',type=bool,default=os.getenv('CONSOLE_LOG', True),help='是否输出到控制台')
     args = parser.parse_args()
     return args
+
 
 def main():
     lsjson = rclone.lsjson(src, args={"recurse": True, "filesOnly": True, "noMimeType": True, "noModTime": True})["list"]
@@ -357,9 +358,10 @@ if __name__ == "__main__":
     depth = args.depth
     loglevel = args.loglevel
     heart = args.heart
+    console_log = args.console_log
 
     # 初始化实例
-    logging_capture = setup_logger(logger_name='AutoRclone', log_file=logfile,console_log=False,level=loglevel)
+    logging_capture = setup_logger(logger_name='AutoRclone', log_file=logfile,console_log=console_log,level=loglevel)
     database = DataBase(db_file)
     rclone = OwnRclone(rclone)
     fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True)
