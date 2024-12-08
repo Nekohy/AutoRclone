@@ -30,6 +30,7 @@ class ThreadStatus:
     """
     # 每个线程控制的最大数量
     max_thread:int = field(init=True)
+    fileprocess: FileProcess = field(init=True)
     # 轮询监听时间
     heart:int = field(init=True)
     # 全局线程状态，set则可以继续添加
@@ -45,7 +46,7 @@ class ThreadStatus:
 
 
     def __post_init__(self):
-        self._totaldisk = self._freedisk = fileprocess.get_free_size(tmp)
+        self._totaldisk = self._freedisk = self.fileprocess.get_free_size(tmp)
         self._pausedisk = int(0)
         # 设置事件可继续
         self.download_continue_event.set()
@@ -361,8 +362,9 @@ if __name__ == "__main__":
     logging_capture = setup_logger(logger_name='AutoRclone', log_file=logfile,console_log=False,level=loglevel)
     database = DataBase(db_file)
     rclone = OwnRclone(rclone)
-    threadstatus = ThreadStatus(max_thread=max_threads, heart=heart)
     fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True)
+    # 传递进去threadstatus
+    threadstatus = ThreadStatus(max_thread=max_threads, heart=heart,fileprocess=fileprocess)
 
     # 启动rclone
     rclone.start_rclone()
