@@ -257,10 +257,12 @@ class ProcessThread:
         while not queue.empty():
             # 把现有的Queue转换为可以传入的list
             data_list = [queue.get_nowait() for _ in range(queue.qsize())]
-            with threads:
-                all_task = list(threads.map(function, data_list))
-                for future in as_completed(all_task):
-                    future.add_done_callback(lambda future: cls.parse_return_result(future))
+            # 提交任务但不等待
+            futures = [threads.submit(function, data) for data in data_list]
+
+            # 为每个future添加回调，但不等待完成
+            for future in futures:
+                future.add_done_callback(lambda f: cls.parse_return_result(f))
 
     @classmethod
     def start_threads(cls):
