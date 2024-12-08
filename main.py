@@ -1,14 +1,12 @@
 # main.py
 import argparse
+import concurrent.futures
 import logging
 import os
 import queue
 import shutil
 import threading
-import concurrent.futures
 import time
-from concurrent.futures import as_completed
-
 from concurrent.futures.thread import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -30,7 +28,7 @@ class ThreadStatus:
     """
     # 每个线程控制的最大数量
     max_thread:int = field(init=True)
-    fileprocess: FileProcess = field(init=True)
+    max_spaces:int = field(init=True)
     # 轮询监听时间
     heart:int = field(init=True)
     # 全局线程状态，set则可以继续添加
@@ -46,7 +44,7 @@ class ThreadStatus:
 
 
     def __post_init__(self):
-        self._totaldisk = self._freedisk = self.fileprocess.get_free_size(tmp)
+        self._totaldisk = self._freedisk = self.max_spaces
         self._pausedisk = int(0)
         # 设置事件可继续
         self.download_continue_event.set()
@@ -315,6 +313,7 @@ def load_env():
     parser.add_argument('--depth', type=int, default=int(os.getenv('DEPTH', 0)), help='使用路径中的目录作为最终文件夹名的探测深度')
     parser.add_argument('--loglevel',type=log_level_type,default=os.getenv('LOGLEVEL', "INFO"), help='Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
     parser.add_argument('--console_log',type=bool,default=os.getenv('CONSOLE_LOG', True),help='是否输出到控制台')
+    parser.add_argument('--max_spaces',type=int,default=os.getenv("MAX_SPACES",0),help='脚本允许使用的最大缓存空间,单位字节，为0为不限制（均预留10%容灾空间）')
     args = parser.parse_args()
     return args
 
@@ -359,14 +358,15 @@ if __name__ == "__main__":
     loglevel = args.loglevel
     heart = args.heart
     console_log = args.console_log
+    max_spaces = args.max_spaces
 
     # 初始化实例
     logging_capture = setup_logger(logger_name='AutoRclone', log_file=logfile,console_log=console_log,level=loglevel)
     database = DataBase(db_file)
     rclone = OwnRclone(rclone)
     fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True)
-    # 传递进去threadstatus
-    threadstatus = ThreadStatus(max_thread=max_threads, heart=heart,fileprocess=fileprocess)
+    # 传递空间，若为0则不限制，否则限制空间
+    threadstatus = ThreadStatus(max_thread=max_threads, heart=heart, max_spaces=max_spaces if max_spaces == 0 else fileprocess.get_free_size(tmp))
 
     # 启动rclone
     rclone.start_rclone()
