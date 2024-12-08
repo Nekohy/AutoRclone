@@ -1,22 +1,21 @@
 # 使用7z官方的二进制文件
 import os
+import shutil
 import subprocess
 import re
 from typing import List, Dict
 
-from exception import PackError, NoRightPasswd, UnpackError, NoExistDecompressDir
+from Exception import PackError, NoRightPasswd, UnpackError, NoExistDecompressDir
 
 
 class FileProcess:
-    def __init__(self,logging,mmt:int=1,p7zip_file:str="7z",autodelete:bool=True):
+    def __init__(self,mmt:int=1,p7zip_file:str="7z",autodelete:bool=True):
         # 7z二进制文件
         self.p7zip_file = p7zip_file
         # 压缩线程默认为1
         self.mmt = mmt
         # 自动删除中间文件
         self.autodelete = autodelete
-        # logging导入
-        self.logging = logging
 
     def decompress(self,src_fs,dst_fs,passwords:list=[]):
         """
@@ -28,7 +27,6 @@ class FileProcess:
         """
         passwords.append(None)
         if not os.path.exists(src_fs):
-            self.logging.error(f"错误：源文件夹 {src_fs} 不存在")
             raise NoExistDecompressDir(f"错误：源文件夹 {src_fs} 不存在")
         os.makedirs(dst_fs,exist_ok=True)
 
@@ -45,14 +43,13 @@ class FileProcess:
             origin_command.append('-sdel')
         for pwd in passwords:
             command = origin_command + ([f'-p{pwd}'] if pwd else ['-p'])
-            self.logging.debug(f"当前解压缩命令 {command}")
+            # self.logging.debug(f"当前解压缩命令 {command}")
             result = subprocess.run(command, capture_output=True, text=True)
-            self.logging.debug(f"当前解压缩日志{result.stdout}")
+            # self.logging.debug(f"当前解压缩日志{result.stdout}")
             if result.returncode == 0:
-                self.logging.info(f"{src_fs}成功解压到{dst_fs}")
                 return dst_fs
             elif "Wrong password" in result.stderr:
-                self.logging.debug(f"{src_fs}密码 '{pwd}' 不正确，尝试下一个密码")
+                print(f"{src_fs}密码 '{pwd}' 不正确，尝试下一个密码")
             else:
                 raise UnpackError(f"{src_fs}解压过程中发生错误: {result.stderr}\n标准输出: {result.stdout}")
         raise NoRightPasswd(f"{src_fs}没有正确的密码")
@@ -85,15 +82,14 @@ class FileProcess:
 
         # 添加输出路径和需要压缩的源路径
         command.extend([dst_location, src_fs])
-        self.logging.debug(f"当前压缩命令 {command}")
+        # self.logging.debug(f"当前压缩命令 {command}")
         # 执行命令
         result = subprocess.run(command, capture_output=True, text=True)
-        self.logging.debug(f"当前压缩日志{result.stdout}")
+        # self.logging.debug(f"当前压缩日志{result.stdout}")
         if result.returncode == 0:
-            self.logging.info(f"{src_fs}成功压缩并存放到{dst_fs}")
+            # self.logging.info(f"{src_fs}成功压缩并存放到{dst_fs}")
             return dst_fs
         else:
-            self.logging.error(f"{src_fs}压缩过程中发生错误: {result.stderr}")
             raise PackError(f"{src_fs}压缩过程中发生错误: {result.stderr}")
 
     def filter_files(self, file_list: List[Dict], fs: str = None, depth: int = 0) -> Dict[str, Dict]:
@@ -158,3 +154,16 @@ class FileProcess:
             categorized[base]['paths'] = sorted(categorized[base]['paths'])
 
         return categorized
+
+    @staticmethod
+    def get_free_size(fs):
+        """
+        :param fs: 本地文件路径
+        :return: 剩余空间大小（字节）
+        """
+        # 如果文件夹不存在则新建
+        os.makedirs(fs, exist_ok=True)
+        # 获取磁盘使用情况
+        total, used, free = shutil.disk_usage(fs)
+        return int(free)
+
