@@ -49,7 +49,8 @@ class FileProcess:
             if result.returncode == 0:
                 return dst_fs
             elif "Wrong password" in result.stderr:
-                print(f"{src_fs}密码 '{pwd}' 不正确，尝试下一个密码")
+                pass
+                # print(f"{src_fs}密码 '{pwd}' 不正确，尝试下一个密码")
             else:
                 raise UnpackError(f"{src_fs}解压过程中发生错误: {result.stderr}\n标准输出: {result.stdout}")
         raise NoRightPasswd(f"{src_fs}没有正确的密码")
