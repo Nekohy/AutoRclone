@@ -54,11 +54,10 @@ class ThreadStatus:
         self.compress_continue_event.set()
         self.upload_continue_event.set()
         # Threads用于储存所有的Threads,最大值为max_thread
-        self.download_threads \
-            = self.decompress_threads \
-            = self.compress_threads \
-            = self.upload_threads \
-            = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
+        self.download_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
+        self.decompress_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
+        self.compress_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
+        self.upload_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
 
     def waiting_release_disk(self):
         # 等待释放磁盘，从压缩到解压到下载逐步释放
