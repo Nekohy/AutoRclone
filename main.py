@@ -340,7 +340,7 @@ load_dotenv(override=True)
 if __name__ == "__main__":
     args = load_env()
     # Use parsed arguments
-    MAX_THREADS = args.MAX_THREADS
+    max_threads = args.max_threads
     db_file = args.db_file
     rclone = args.rclone
     p7zip_file = args.p7zip_file
@@ -361,7 +361,7 @@ if __name__ == "__main__":
     logging_capture = setup_logger(logger_name='AutoRclone', log_file=logfile,console_log=False,level=loglevel)
     database = DataBase(db_file)
     rclone = OwnRclone(rclone)
-    threadstatus = ThreadStatus(max_thread=MAX_THREADS, heart=heart)
+    threadstatus = ThreadStatus(max_thread=max_threads, heart=heart)
     fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True)
 
     # 启动rclone
