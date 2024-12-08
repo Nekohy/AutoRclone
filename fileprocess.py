@@ -161,6 +161,8 @@ class FileProcess:
         :param fs: 本地文件路径
         :return: 剩余空间大小（字节）
         """
+        # 如果文件夹不存在则新建
+        os.makedirs(fs, exist_ok=True)
         # 获取磁盘使用情况
         total, used, free = shutil.disk_usage(fs)
         return int(free)
