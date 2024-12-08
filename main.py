@@ -151,8 +151,8 @@ class ProcessThread:
         threadstatus.throttling = sizes
         threadstatus.download_continue_event.wait()
         try:
-            #todo 增加错误重试
-            rclone.copyfile(paths, cls._get_name("download"), replace_name=None)
+            for file in paths:
+                rclone.copyfile(file, cls._get_name("download"), replace_name=None)
             logging_capture.info(f"下载步骤完成: {name}")
             database.update_status(basename=name, step=1)
         except RcloneError as e:
