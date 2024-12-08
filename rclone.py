@@ -197,8 +197,7 @@ class DataBase:
             self._insert_data(basename, info)
         self.database.commit()
 
-    @classmethod
-    def update_status(cls, basename: str, step: int, status: int = 0, log:str=''):
+    def update_status(self, basename: str, step: int, status: int = 0, log:str=''):
         """
         更新文件的状态和日志
 
@@ -208,7 +207,8 @@ class DataBase:
             status (int): 状态码（0: 未完成, 1: 完成, 2: 密码错误, 3: 错误 4：意外错误）
             log (str): 相关日志信息
         """
-        database = sqlite3.connect(cls.db_file)
+        # 单独开一个database给多线程用
+        database = sqlite3.connect(self.db_file)
         cursor = database.cursor()
         cursor.execute('''
             UPDATE base_files

@@ -152,7 +152,7 @@ class ProcessThread:
         threadstatus.download_continue_event.wait()
         try:
             for file in paths:
-                rclone.copyfile(file, cls._get_name("download"), replace_name=None)
+                rclone.copyfile(file, cls._get_name(name)["download"], replace_name=None)
             logging_capture.info(f"下载步骤完成: {name}")
             database.update_status(basename=name, step=1)
         except RcloneError as e:
@@ -176,7 +176,7 @@ class ProcessThread:
         threadstatus.decompress_continue_event.wait()
         try:
             #todo 增加错误重试,这里有坑，不能多次解压已成功的，没有抓响应码
-            fileprocess.decompress(cls._get_name("download"), cls._get_name("decompress"), passwords=passwords)
+            fileprocess.decompress(cls._get_name(name)["download"], cls._get_name(name)["decompress"], passwords=passwords)
             logging_capture.info(f"解压步骤完成: {name}")
             database.update_status(basename=name, step=2)
         except NoRightPasswd:
@@ -197,7 +197,7 @@ class ProcessThread:
             raise
         finally:
             # 释放空间
-            shutil.rmtree(str(cls._get_name("download")))
+            shutil.rmtree(str(cls._get_name(name)["download"]))
             threadstatus.throttling = -sizes
             threadstatus.compress_queue.put(files_info)
 
@@ -208,7 +208,7 @@ class ProcessThread:
         threadstatus.compress_continue_event.wait()
         try:
             # noinspection PyTypeChecker
-            fileprocess.compress(cls._get_name("decompress"), cls._get_name("compress"), password=password,
+            fileprocess.compress(cls._get_name(name)["decompress"], cls._get_name(name)["compress"], password=password,
                                  mx=mx, volumes=volumes)
             logging_capture.info(f"压缩步骤完成: {name}")
             database.update_status(basename=name, step=3)
@@ -222,7 +222,7 @@ class ProcessThread:
             raise
         finally:
             # 释放空间
-            shutil.rmtree(str(cls._get_name("decompress")))
+            shutil.rmtree(str(cls._get_name(name)["decompress"]))
             threadstatus.throttling = -sizes
             threadstatus.upload_queue.put(files_info)
 
@@ -232,7 +232,7 @@ class ProcessThread:
         name,paths,sizes = cls._parse_files_info(files_info)
         threadstatus.upload_continue_event.wait()
         try:
-            rclone.copyfile(cls._get_name("compress"), cls._get_name("upload"), replace_name=None)
+            rclone.copyfile(cls._get_name(name)["compress"],cls._get_name(name)["upload"], replace_name=None)
             logging_capture.info(f"上传步骤完成: {name}")
             database.update_status(basename=name, step=4,status=1)
         except RcloneError as e:
@@ -245,7 +245,7 @@ class ProcessThread:
             raise
         finally:
             # 释放空间
-            shutil.rmtree(str(cls._get_name("compress")))
+            shutil.rmtree(str(cls._get_name(name)["compress"]))
             threadstatus.throttling = -sizes
 
     @staticmethod
