@@ -119,15 +119,14 @@ class ThreadStatus:
 class ProcessThread:
 
     # todo 传入Rclone的参数来启动
-    # 文件信息,用于给子线程实例化用的，不必传入
-    files_info:list = field(default_factory=list,init=False)
 
-    def _parse_files_info(self):
+    @classmethod
+    def _parse_files_info(cls, files_info):
         # 解析文件信息
-        name:str = self.files_info[0]
+        name: str = files_info[0]
         # 所有对应的文件路径和总大小
-        paths:list = self.files_info[1][0]
-        sizes:int = self.files_info[1][1]
+        paths: list = files_info[1][0]
+        sizes: int = files_info[1][1]
         return name, paths, sizes
 
     @staticmethod
