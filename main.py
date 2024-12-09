@@ -152,6 +152,8 @@ class ProcessThread:
                 rclone.copyfile(file, cls._get_name(name)["download"], replace_name=None)
             logging_capture.info(f"下载步骤完成: {name}")
             database.update_status(basename=name, step=1)
+            # 添加到解压Queue当前files_info
+            threadstatus.decompress_queue.put(files_info)
         except RcloneError as e:
             logging_capture.error(f"当前任务{name}下载过程出错{e}")
             database.update_status(basename=name,step=1,status=3)
@@ -163,8 +165,6 @@ class ProcessThread:
         finally:
             # 释放空间
             threadstatus.throttling = -sizes
-            # 添加到解压Queue当前files_info
-            threadstatus.decompress_queue.put(files_info)
 
     @classmethod
     def decompress_thread(cls,files_info):
@@ -176,6 +176,7 @@ class ProcessThread:
             fileprocess.decompress(cls._get_name(name)["download"], cls._get_name(name)["decompress"], passwords=passwords)
             logging_capture.info(f"解压步骤完成: {name}")
             database.update_status(basename=name, step=2)
+            threadstatus.compress_queue.put(files_info)
         except NoRightPasswd:
             logging_capture.warning(f"当前任务{name}无正确的解压密码")
             database.update_status(basename=name, step=2,status=2)
@@ -196,8 +197,6 @@ class ProcessThread:
             # 释放空间
             shutil.rmtree(str(cls._get_name(name)["download"]))
             threadstatus.throttling = -sizes
-            threadstatus.compress_queue.put(files_info)
-
     @classmethod
     def compress_thread(cls,files_info):
         # 传递文件大小进行流控
@@ -209,6 +208,7 @@ class ProcessThread:
                                  mx=mx, volumes=volumes)
             logging_capture.info(f"压缩步骤完成: {name}")
             database.update_status(basename=name, step=3)
+            threadstatus.upload_queue.put(files_info)
         except PackError as e:
             logging_capture.error(f"当前任务{name}压缩过程出错{e}")
             database.update_status(basename=name, step=3, status=3)
@@ -221,7 +221,6 @@ class ProcessThread:
             # 释放空间
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
             threadstatus.throttling = -sizes
-            threadstatus.upload_queue.put(files_info)
 
     @classmethod
     def upload_thread(cls,files_info):
