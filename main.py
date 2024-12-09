@@ -319,7 +319,7 @@ def load_env():
     parser.add_argument('--mmt', type=int, default=int(os.getenv('MMT', 4)), help='解压缩线程数')
     parser.add_argument('--volumes', type=str, default=os.getenv('VOLUMES', '4g'), help='分卷大小')
     parser.add_argument('--logfile', type=str, default=os.getenv('LOGFILE', 'AutoRclone.log'), help='日志文件路径')
-    parser.add_argument('--depth', type=int, default=int(os.getenv('DEPTH', 0)), help='使用路径中的目录作为最终文件夹名的探测深度')
+    parser.add_argument('--depth', type=int, default=int(os.getenv('DEPTH', 0)), help='使用路径中的目录作为最终文件夹名的探测深度,为0则使用文件名，例如 Alist:c/a/b.zip 0使用b为文件名，1使用a')
     parser.add_argument('--loglevel',type=log_level_type,default=os.getenv('LOGLEVEL', "INFO"), help='Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
     parser.add_argument('--console_log',type=bool,default=os.getenv('CONSOLE_LOG', True),help='是否输出到控制台')
     parser.add_argument('--max_spaces',type=int,default=os.getenv("MAX_SPACES",0),help='脚本允许使用的最大缓存空间,单位字节，为0为不限制（均预留10%容灾空间）')
@@ -329,7 +329,7 @@ def load_env():
 
 def main():
     lsjson = rclone.lsjson(src, args={"recurse": True, "filesOnly": True, "noMimeType": True, "noModTime": True})["list"]
-    #todo 临时补丁,分离驱动器和名称，前者是不带驱动器的
+    # todo 临时补丁,分离驱动器和名称，前者是驱动器的,例如 Alist:
     srcfs,_ = rclone.extract_parts(src)
     # 过滤文件列表
     filter_list = fileprocess.filter_files(lsjson,srcfs,depth)
