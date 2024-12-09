@@ -158,10 +158,12 @@ class ProcessThread:
         except RcloneError as e:
             logging_capture.error(f"当前任务{name}下载过程出错{e}")
             database.update_status(basename=name,step=1,status=3)
+            shutil.rmtree(str(cls._get_name(name)["download"]))
             raise
         except Exception as e:
             logging_capture.error(f"当前任务{name}下载过程未知出错{e}")
             database.update_status(basename=name, step=1, status=4)
+            shutil.rmtree(str(cls._get_name(name)["download"]))
             raise
         finally:
             # 释放空间
@@ -181,18 +183,22 @@ class ProcessThread:
         except NoRightPasswd:
             logging_capture.warning(f"当前任务{name}无正确的解压密码")
             database.update_status(basename=name, step=2,status=2)
+            shutil.rmtree(str(cls._get_name(name)["decompress"]))
             raise
         except NoExistDecompressDir:
             logging_capture.warning(f"当前任务{name}不存在")
             database.update_status(basename=name, step=2, status=3)
+            shutil.rmtree(str(cls._get_name(name)["decompress"]))
             raise
         except UnpackError as e:
             logging_capture.error(f"当前任务{name}解压过程出错{e}")
             database.update_status(basename=name, step=2, status=3)
+            shutil.rmtree(str(cls._get_name(name)["decompress"]))
             raise
         except Exception as e:
             logging_capture.error(f"当前任务{name}解压过程未知出错{e}")
             database.update_status(basename=name, step=2, status=4)
+            shutil.rmtree(str(cls._get_name(name)["decompress"]))
             raise
         finally:
             # 释放空间
@@ -213,10 +219,12 @@ class ProcessThread:
         except PackError as e:
             logging_capture.error(f"当前任务{name}压缩过程出错{e}")
             database.update_status(basename=name, step=3, status=3)
+            shutil.rmtree(str(cls._get_name(name)["compress"]))
             raise
         except Exception as e:
             logging_capture.error(f"当前任务{name}压缩过程未知出错{e}")
             database.update_status(basename=name, step=3, status=4)
+            shutil.rmtree(str(cls._get_name(name)["compress"]))
             raise
         finally:
             # 释放空间
