@@ -18,6 +18,8 @@ class Rclone:
         # 启动参数
         self.link = "127.0.0.1:4572"
         self.args = ["rcd","--rc-no-auth",f"--rc-addr={self.link}"]
+        # 是否检验文件完整性
+        self.checknum = True
 
     def __requests(self,params,json):
         result = requests.post(f"http://{self.link}{params}",
@@ -47,7 +49,8 @@ class Rclone:
         json = {
             "srcFs": source,
             "dstFs": dst,
-            "createEmptySrcDirs": True
+            "createEmptySrcDirs": True,
+            "CheckSum": self.checknum
         }
         return self.__requests("/sync/copy",json)
 
@@ -57,8 +60,19 @@ class Rclone:
             "srcRemote": srcremote,
             "dstFs": dstfs,
             "dstRemote": dstremote,
+            "CheckSum": self.checknum
         }
         return self.__requests("/operations/copyfile",json)
+
+    def move(self,source,dst):
+        json = {
+            "srcFs": source,
+            "dstFs": dst,
+            "createEmptySrcDirs": True,
+            "deleteEmptySrcDirs": True,
+            "CheckSum": self.checknum
+        }
+        return self.__requests("/sync/move",json)
 
     def movefile(self, srcfs, srcremote, dstfs, dstremote):
         json = {
@@ -66,6 +80,7 @@ class Rclone:
             "srcRemote": srcremote,
             "dstFs": dstfs,
             "dstRemote": dstremote,
+            "CheckSum": self.checknum
         }
         return self.__requests("/operations/movefile", json)
 
@@ -103,15 +118,6 @@ class Rclone:
             "opt": args if args else None
         }
         return self.__requests("/operations/list",json)
-
-    def move(self,source,dst):
-        json = {
-            "srcFs": source,
-            "dstFs": dst,
-            "createEmptySrcDirs": True,
-            "deleteEmptySrcDirs": True
-        }
-        return self.__requests("/sync/move",json)
 
     def du(self, local_dir="/"):
         """
