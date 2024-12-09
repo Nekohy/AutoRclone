@@ -7,11 +7,12 @@ import queue
 import shutil
 import threading
 import time
+from concurrent.futures import Future
 from concurrent.futures.thread import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from queue import Queue
-from typing import Callable
+from typing import Callable, Any
 
 from dotenv import load_dotenv
 
@@ -249,26 +250,35 @@ class ProcessThread:
         pass
 
     @classmethod
-    def _start_threads(cls, function:Callable, queue: Queue,threads:ThreadPoolExecutor) -> None:
+    def _start_threads(cls, function:Callable, queue: Queue,threads:ThreadPoolExecutor) -> list[Future[Any]]:
         # 把每个ThreadStatusQueue的内容用来启动线程
         while not queue.empty():
             # 把现有的Queue转换为可以传入的list
             data_list = [queue.get_nowait() for _ in range(queue.qsize())]
             # 提交任务但不等待
             futures = [threads.submit(function, data) for data in data_list]
-
             # 为每个future添加回调，但不等待完成
             for future in futures:
                 future.add_done_callback(lambda f: cls.parse_return_result(f))
+            return futures
 
     @classmethod
     def start_threads(cls):
+        total_futures = []
         # 循环把每个threadstatus Queue的内容用来启动线程
         while True:
-            cls._start_threads(function=cls.download_thread,queue=threadstatus.download_queue,threads=threadstatus.download_threads)
-            cls._start_threads(function=cls.decompress_thread,queue=threadstatus.decompress_queue,threads=threadstatus.decompress_threads)
-            cls._start_threads(function=cls.compress_thread,queue=threadstatus.compress_queue,threads=threadstatus.compress_threads)
-            cls._start_threads(function=cls.upload_thread,queue=threadstatus.upload_queue,threads=threadstatus.upload_threads)
+            download_futures = cls._start_threads(function=cls.download_thread,queue=threadstatus.download_queue,threads=threadstatus.download_threads)
+            decompress_futures = cls._start_threads(function=cls.decompress_thread,queue=threadstatus.decompress_queue,threads=threadstatus.decompress_threads)
+            compress_futures = cls._start_threads(function=cls.compress_thread,queue=threadstatus.compress_queue,threads=threadstatus.compress_threads)
+            upload_futures = cls._start_threads(function=cls.upload_thread,queue=threadstatus.upload_queue,threads=threadstatus.upload_threads)
+            # 写入当前任务到一个总的futures
+            for futures in [download_futures,decompress_futures,compress_futures,upload_futures]:
+                if futures:
+                    total_futures.extend(futures)
+            # 如果所有任务完成，关闭Rclone并结束
+            if all(future.done() for future in total_futures):
+                process.kill()
+                break
 
 
 @contextmanager
@@ -368,7 +378,7 @@ if __name__ == "__main__":
     threadstatus = ThreadStatus(max_thread=max_threads, heart=heart, max_spaces=fileprocess.get_free_size(tmp) if max_spaces == 0 else max_spaces)
 
     # 启动rclone
-    rclone.start_rclone()
+    process = rclone.start_rclone()
 
     # 启动函数
     main()
