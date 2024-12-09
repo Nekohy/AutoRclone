@@ -237,7 +237,7 @@ class ProcessThread:
         name,paths,sizes = cls._parse_files_info(files_info)
         threadstatus.upload_continue_event.wait()
         try:
-            rclone.copyfile(cls._get_name(name)["compress"],cls._get_name(name)["upload"], replace_name=None)
+            rclone.move(cls._get_name(name)["compress"],cls._get_name(name)["upload"])
             logging_capture.info(f"上传步骤完成: {name}")
             database.update_status(basename=name, step=4,status=1)
         except RcloneError as e:
