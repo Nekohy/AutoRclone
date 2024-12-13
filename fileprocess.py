@@ -121,7 +121,7 @@ class FileProcess:
 
         for file in file_list:
             name = file.get('Name', '')
-            path = os.path.join(fs, file.get('Path', '')).replace('\\', '/') if fs else file.get('Path', '')
+            path = file.get('Path', '')
             size = file.get('Size', 0)
             matched = False  # 标记文件是否已被匹配
 
@@ -130,8 +130,8 @@ class FileProcess:
                 base_name = name
             else:
                 path_parts = path.split('/')
-                if len(path_parts) >= depth:
-                    base_name = path_parts[-depth]
+                if len(path_parts) >= depth or depth < 0:
+                    base_name = path_parts[depth-1]
                 else:
                     base_name = name  # 如果深度超出路径长度，使用文件名
 
