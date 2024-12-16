@@ -120,28 +120,27 @@ class FileProcess:
             raise ValueError("No File List To Filter")
 
         for file in file_list:
-            name = file.get('Name', '')
+            base_name = file.get('Name', '')
             path = file.get('Path', '').replace('\\', '/')
             size = file.get('Size', 0)
             matched = False  # 标记文件是否已被匹配
 
             if depth == 0:
-                base_name = name
+                output_name = base_name
             else:
                 path_parts = path.split('/')
                 if len(path_parts) >= depth or depth < 0:
-                    base_name = path_parts[depth-1]
+                    output_name = path_parts[depth-1]
                 else:
-                    base_name = name  # 如果深度超出路径长度，使用文件名
+                    output_name = base_name  # 如果深度超出路径长度，使用文件名
 
             for file_type, pattern in patterns.items():
                 match = pattern.match(base_name)
                 if match:
-                    base_name = match.group('base')
-                    if base_name not in categorized:
-                        categorized[base_name] = {'paths': set(), 'total_size': 0}
-                    categorized[base_name]['paths'].add(os.path.join(fs, path).replace('\\', '/') if fs else path)
-                    categorized[base_name]['total_size'] += size
+                    if output_name not in categorized:
+                        categorized[output_name] = {'paths': set(), 'total_size': size}
+                    categorized[output_name]['paths'].add(os.path.join(fs, path).replace('\\', '/'))
+                    categorized[output_name]['total_size'] += size
                     matched = True
                     break  # 匹配成功后不再继续检测其他类型
 
