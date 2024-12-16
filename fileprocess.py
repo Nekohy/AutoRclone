@@ -121,11 +121,10 @@ class FileProcess:
 
         for file in file_list:
             name = file.get('Name', '')
-            path = file.get('Path', '')
+            path = file.get('Path', '').replace('\\', '/')
             size = file.get('Size', 0)
             matched = False  # 标记文件是否已被匹配
 
-            # 根据 depth 参数决定基础文件名
             if depth == 0:
                 base_name = name
             else:
@@ -141,7 +140,7 @@ class FileProcess:
                     base_name = match.group('base')
                     if base_name not in categorized:
                         categorized[base_name] = {'paths': set(), 'total_size': 0}
-                    categorized[base_name]['paths'].add(path)
+                    categorized[base_name]['paths'].add(os.path.join(fs, path).replace('\\', '/') if fs else path)
                     categorized[base_name]['total_size'] += size
                     matched = True
                     break  # 匹配成功后不再继续检测其他类型
