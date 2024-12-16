@@ -177,27 +177,32 @@ class ProcessThread:
         try:
             #todo 增加错误重试,这里有坑，不能多次解压已成功的，没有抓响应码
             fileprocess.decompress(cls._get_name(name)["download"], cls._get_name(name)["decompress"], passwords=passwords)
-            logging_capture.info(f"解压步骤完成: {name}")
+            log = f"解压步骤完成: {name}"
+            logging_capture.info(log)
             database.update_status(basename=name, step=2)
             threadstatus.compress_queue.put(files_info)
         except NoRightPasswd:
-            logging_capture.warning(f"当前任务{name}无正确的解压密码")
-            database.update_status(basename=name, step=2,status=2)
+            log = f"当前任务{name}无正确的解压密码"
+            logging_capture.warning(log)
+            database.update_status(basename=name, step=2, status=2, log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
             raise
         except NoExistDecompressDir:
-            logging_capture.warning(f"当前任务{name}不存在")
-            database.update_status(basename=name, step=2, status=3)
+            log = f"当前任务{name}不存在"
+            logging_capture.warning(log)
+            database.update_status(basename=name, step=2, status=3, log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
             raise
         except UnpackError as e:
-            logging_capture.error(f"当前任务{name}解压过程出错{e}")
-            database.update_status(basename=name, step=2, status=3)
+            log = f"当前任务{name}解压过程出错{e}"
+            logging_capture.error(log)
+            database.update_status(basename=name, step=2, status=3,log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
             raise
         except Exception as e:
-            logging_capture.error(f"当前任务{name}解压过程未知出错{e}")
-            database.update_status(basename=name, step=2, status=4)
+            log = f"当前任务{name}解压过程未知出错{e}"
+            logging_capture.error(log)
+            database.update_status(basename=name, step=2, status=4, log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
             raise
         finally:
@@ -217,13 +222,15 @@ class ProcessThread:
             database.update_status(basename=name, step=3)
             threadstatus.upload_queue.put(files_info)
         except PackError as e:
-            logging_capture.error(f"当前任务{name}压缩过程出错{e}")
-            database.update_status(basename=name, step=3, status=3)
+            log = f"当前任务{name}压缩过程出错{e}"
+            logging_capture.error(log)
+            database.update_status(basename=name, step=3, status=3, log=log)
             shutil.rmtree(str(cls._get_name(name)["compress"]))
             raise
         except Exception as e:
-            logging_capture.error(f"当前任务{name}压缩过程未知出错{e}")
-            database.update_status(basename=name, step=3, status=4)
+            log = f"当前任务{name}压缩过程未知出错{e}"
+            logging_capture.error(log)
+            database.update_status(basename=name, step=3, status=4,log=log)
             shutil.rmtree(str(cls._get_name(name)["compress"]))
             raise
         finally:
@@ -241,12 +248,14 @@ class ProcessThread:
             logging_capture.info(f"上传步骤完成: {name}")
             database.update_status(basename=name, step=4,status=1)
         except RcloneError as e:
-            logging_capture.error(f"当前任务{name}上传过程出错{e}")
-            database.update_status(basename=name, step=4, status=3)
+            log = f"当前任务{name}上传过程出错{e}"
+            logging_capture.error(log)
+            database.update_status(basename=name, step=4, status=3, log=log)
             raise
         except Exception as e:
-            logging_capture.error(f"当前任务{name}上传过程未知出错{e}")
-            database.update_status(basename=name, step=4, status=4)
+            log = f"当前任务{name}上传过程未知出错{e}"
+            logging_capture.error(log)
+            database.update_status(basename=name, step=4, status=4, log=log)
             raise
         finally:
             # 释放空间
