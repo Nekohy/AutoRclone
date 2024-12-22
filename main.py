@@ -98,7 +98,7 @@ class ThreadStatus:
         :param usedisk: 使用的磁盘
         :return:
         若 usedisk < 0,则为释放
-        若 usedisk * 2.31 > _totaldisk * 0.9，则直接报错
+        若 usedisk > _totaldisk * 0.9，则直接报错
         若 usedisk + _pausedisk > _totaldisk * 0.9,则挂起下载，解压，压缩线程池并等待上传完毕后从后到前释放
         """
         self._pausedisk += usedisk
