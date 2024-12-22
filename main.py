@@ -133,6 +133,7 @@ class ProcessThread:
         download = os.path.join(tmp, "download", name).replace("\\", "/")
         decompress = os.path.join(tmp, "decompress", name).replace("\\", "/")
         compress = os.path.join(tmp, "compress", name).replace("\\", "/")
+        #todo 修改此处upload为目录树
         upload = os.path.join(dst, name).replace("\\", "/")
         return {"download": download, "decompress": decompress, "compress": compress, "upload": upload}
 
@@ -142,7 +143,6 @@ class ProcessThread:
 
     @classmethod
     def download_thread(cls,files_info):
-        database = DataBase(db_file)
         # 传递文件大小进行流控
         name,paths,sizes = cls._parse_files_info(files_info)
         # 正常流控
@@ -159,20 +159,24 @@ class ProcessThread:
             logging_capture.error(f"当前任务{name}下载过程出错{e}")
             database.update_status(basename=name,step=1,status=3)
             shutil.rmtree(str(cls._get_name(name)["download"]))
+            threadstatus.throttling = -sizes
             raise
         except Exception as e:
             logging_capture.error(f"当前任务{name}下载过程未知出错{e}")
             database.update_status(basename=name, step=1, status=4)
             shutil.rmtree(str(cls._get_name(name)["download"]))
+            threadstatus.throttling = -sizes
             raise
         finally:
-            # 释放空间
-            threadstatus.throttling = -sizes
+            # 不在这里释放了，毕竟要占用两份
+            pass
 
     @classmethod
     def decompress_thread(cls,files_info):
         # 传递文件大小进行流控
         name,paths,sizes = cls._parse_files_info(files_info)
+        # 按10%压缩率算吧
+        threadstatus.throttling = sizes * 1.1
         threadstatus.decompress_continue_event.wait()
         try:
             #todo 增加错误重试,这里有坑，不能多次解压已成功的，没有抓响应码
@@ -186,33 +190,40 @@ class ProcessThread:
             logging_capture.warning(log)
             database.update_status(basename=name, step=2, status=2, log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
+            threadstatus.throttling = -(sizes * 1.1)
             raise
         except NoExistDecompressDir:
             log = f"当前任务{name}不存在"
             logging_capture.warning(log)
             database.update_status(basename=name, step=2, status=3, log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
+            threadstatus.throttling = -(sizes * 1.1)
             raise
         except UnpackError as e:
             log = f"当前任务{name}解压过程出错{e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=2, status=3,log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
+            threadstatus.throttling = -(sizes * 1.1)
             raise
         except Exception as e:
             log = f"当前任务{name}解压过程未知出错{e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=2, status=4, log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
+            threadstatus.throttling = -(sizes * 1.1)
             raise
         finally:
             # 释放空间
             shutil.rmtree(str(cls._get_name(name)["download"]))
             threadstatus.throttling = -sizes
+
     @classmethod
     def compress_thread(cls,files_info):
         # 传递文件大小进行流控
         name,paths,sizes = cls._parse_files_info(files_info)
+
+        threadstatus.throttling = sizes * 1.21
         threadstatus.compress_continue_event.wait()
         try:
             # noinspection PyTypeChecker
@@ -226,17 +237,19 @@ class ProcessThread:
             logging_capture.error(log)
             database.update_status(basename=name, step=3, status=3, log=log)
             shutil.rmtree(str(cls._get_name(name)["compress"]))
+            threadstatus.throttling = -(sizes * 1.21)
             raise
         except Exception as e:
             log = f"当前任务{name}压缩过程未知出错{e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=3, status=4,log=log)
             shutil.rmtree(str(cls._get_name(name)["compress"]))
+            threadstatus.throttling = -(sizes * 1.21)
             raise
         finally:
             # 释放空间
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
-            threadstatus.throttling = -sizes
+            threadstatus.throttling = -(sizes * 1.1)
 
     @classmethod
     def upload_thread(cls,files_info):
@@ -260,7 +273,7 @@ class ProcessThread:
         finally:
             # 释放空间
             shutil.rmtree(str(cls._get_name(name)["compress"]))
-            threadstatus.throttling = -sizes
+            threadstatus.throttling = -(sizes * 1.21)
 
     @staticmethod
     def parse_return_result(future):
@@ -342,7 +355,6 @@ def load_env():
     parser.add_argument('--max_spaces',type=int,default=os.getenv("MAX_SPACES",0),help='脚本允许使用的最大缓存空间,单位字节，为0为不限制（均预留10%容灾空间）')
     args = parser.parse_args()
     return args
-
 
 def main():
     lsjson = rclone.lsjson(src, args={"recurse": True, "filesOnly": True, "noMimeType": True, "noModTime": True})["list"]

@@ -214,14 +214,14 @@ class DataBase:
             log (str): 相关日志信息
         """
         # 单独开一个database给多线程用
-        database = sqlite3.connect(self.db_file)
-        cursor = database.cursor()
-        cursor.execute('''
-            UPDATE base_files
-            SET status = ?, log = ?,step = ?
-            WHERE basename = ?
-        ''', (status, log, step, basename))
-        database.commit()
+        with sqlite3.connect(self.db_file) as database:
+            cursor = database.cursor()
+            cursor.execute('''
+                UPDATE base_files
+                SET status = ?, log = ?,step = ?
+                WHERE basename = ?
+            ''', (status, log, step, basename))
+            database.commit()
 
     def read_data(self, status: int):
         """
