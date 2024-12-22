@@ -65,18 +65,16 @@ class ThreadStatus:
             event.clear()
         while True:
             # 逐步释放Thread
-            if (not self.upload_threads) and (
-            not self.upload_continue_event.is_set()) and self.compress_continue_event.is_set():
+            if (not self.upload_threads) and (not self.upload_continue_event.is_set()):
                 self.compress_continue_event.set()
 
-            if (not self.compress_threads) and (
-            not self.compress_continue_event.is_set()) and self.decompress_continue_event.is_set():
+            if (not self.compress_threads) and (not self.compress_continue_event.is_set()):
                 self.decompress_continue_event.set()
 
-            if (not self.decompress_threads) and (
-            not self.decompress_continue_event.is_set()) and self.download_continue_event.is_set():
+            if (not self.decompress_threads) and (not self.decompress_continue_event.is_set()):
                 self.download_continue_event.set()
                 break
+
             # 轮询休眠 heart 秒
             time.sleep(self.heart)
 
