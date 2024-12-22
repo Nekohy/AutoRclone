@@ -7,7 +7,6 @@ import queue
 import shutil
 import threading
 import time
-from bz2 import decompress
 from concurrent.futures import Future
 from concurrent.futures.thread import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -59,6 +58,7 @@ class ThreadStatus:
         self.compress_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
         self.upload_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
 
+    # 暂时用不上
     def waiting_release_disk(self):
         # 等待释放磁盘，从压缩到解压到下载逐步释放
         for event in [self.download_continue_event, self.decompress_continue_event, self.compress_continue_event]:
@@ -102,14 +102,19 @@ class ThreadStatus:
         """
         self._pausedisk += usedisk
         if usedisk <= 0:
-            return
-        if usedisk > self._totaldisk * 0.9:
-            raise FileTooLarge(f"文件过大，文件大小为{usedisk}字节")
-        if self._pausedisk > self._totaldisk * 0.9:
-            logging_capture.warning(f"目前已预留空间{self._pausedisk},总空间{self._totaldisk*0.9},已等待所有线程完成后释放")
-            t = threading.Thread(target=self.waiting_release_disk, daemon=True)
-            t.start()
-
+            if self._pausedisk < self._totaldisk * 0.9:
+                logging_capture.info(f"已有足够空间，释放线程池")
+                for event in [self.download_continue_event, self.decompress_continue_event,
+                              self.compress_continue_event]:
+                    event.set()
+        elif usedisk > 0:
+            if usedisk > self._totaldisk * 0.9:
+                raise FileTooLarge(f"文件过大，文件大小为{usedisk}字节")
+            if self._pausedisk > self._totaldisk * 0.9:
+                logging_capture.warning(f"目前已预留空间{self._pausedisk},总空间{self._totaldisk*0.9},已等待有足够空间后释放")
+                for event in [self.download_continue_event, self.decompress_continue_event,
+                              self.compress_continue_event]:
+                    event.clear()
 
 
 @dataclass
