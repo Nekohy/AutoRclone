@@ -101,13 +101,11 @@ class ThreadStatus:
         若 usedisk * 2.31 > _totaldisk * 0.9，则直接报错
         若 usedisk + _pausedisk > _totaldisk * 0.9,则挂起下载，解压，压缩线程池并等待上传完毕后从后到前释放
         """
-        if not isinstance(usedisk, int):
-            raise ValueError('usedisk must be int')
         self._pausedisk += usedisk
         if usedisk <= 0:
             return
         if usedisk > self._totaldisk * 0.9:
-            logging_capture.warning(f"文件过大，文件大小为{usedisk}字节")
+            raise FileTooLarge(f"文件过大，文件大小为{usedisk}字节")
         if self._pausedisk > self._totaldisk * 0.9:
             t = threading.Thread(target=self.waiting_release_disk, daemon=True)
             t.start()
@@ -151,9 +149,9 @@ class ProcessThread:
         name,paths,sizes = cls._parse_files_info(files_info)
         pause_sizes = sizes * (cls.download_magnification + cls.decompress_magnification + cls.compress_magnification)
         release_sizes = 0
-        threadstatus.throttling = pause_sizes
-        threadstatus.download_continue_event.wait()
         try:
+            threadstatus.throttling = pause_sizes
+            threadstatus.download_continue_event.wait()
             for file in paths:
                 rclone.copyfile(file, cls._get_name(name)["download"], replace_name=None)
             logging_capture.info(f"下载步骤完成: {name}")
@@ -164,6 +162,11 @@ class ProcessThread:
             logging_capture.error(f"当前任务{name}下载过程出错{e}")
             database.update_status(basename=name,step=1,status=3)
             shutil.rmtree(str(cls._get_name(name)["download"]))
+            threadstatus.throttling = -pause_sizes
+            raise
+        except FileTooLarge as e:
+            logging_capture.warning(e)
+            database.update_status(basename=name, step=1, status=3,log=str(e))
             threadstatus.throttling = -pause_sizes
             raise
         except Exception as e:
