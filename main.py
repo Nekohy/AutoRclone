@@ -107,7 +107,7 @@ class ThreadStatus:
         if usedisk <= 0:
             return
         if usedisk > self._totaldisk * 0.9:
-            raise FileTooLarge(f"文件过大，文件大小为{usedisk}字节")
+            logging_capture.warning(f"文件过大，文件大小为{usedisk}字节")
         if self._pausedisk > self._totaldisk * 0.9:
             t = threading.Thread(target=self.waiting_release_disk, daemon=True)
             t.start()
@@ -316,6 +316,7 @@ class ProcessThread:
                     total_futures.extend(futures)
             # 如果所有任务完成，关闭Rclone并结束
             if all(future.done() for future in total_futures):
+                logging_capture.info("所有任务已完成")
                 process.kill()
                 break
 
