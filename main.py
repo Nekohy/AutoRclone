@@ -150,8 +150,8 @@ class ProcessThread:
         pause_sizes = sizes * (cls.download_magnification + cls.decompress_magnification + cls.compress_magnification)
         release_sizes = 0
         try:
-            threadstatus.throttling = pause_sizes
             threadstatus.download_continue_event.wait()
+            threadstatus.throttling = pause_sizes
             for file in paths:
                 rclone.copyfile(file, cls._get_name(name)["download"], replace_name=None)
             logging_capture.info(f"下载步骤完成: {name}")
