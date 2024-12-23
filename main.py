@@ -111,6 +111,7 @@ class ThreadStatus:
                 self.download_continue_event.set()
         elif usedisk > 0:
             if usedisk > self._totaldisk * 0.9:
+                self._pausedisk -= usedisk
                 raise FileTooLarge(f"文件过大，文件大小为{usedisk}字节")
             if self._pausedisk > self._totaldisk * 0.9:
                 logging_capture.warning(f"目前已预留空间{self._pausedisk},总空间{self._totaldisk * 0.9},等待目前有释放空间后释放线程")
