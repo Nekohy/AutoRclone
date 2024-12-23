@@ -65,15 +65,18 @@ class ThreadStatus:
             event.clear()
         while True:
             # 逐步释放Thread
-            if (not self.upload_threads) and (not self.upload_continue_event.is_set()):
+            if not self.upload_threads:
                 self.compress_continue_event.set()
 
-            if (not self.compress_threads) and (not self.compress_continue_event.is_set()):
+            if not self.compress_threads:
                 self.decompress_continue_event.set()
 
-            if (not self.decompress_threads) and (not self.decompress_continue_event.is_set()):
+            if not self.decompress_threads:
                 self.download_continue_event.set()
                 logging_capture.info(f"所有线程已完成，释放线程池")
+
+            if self.download_continue_event.is_set() and self.decompress_continue_event.is_set() and self.compress_continue_event.is_set() and self.upload_continue_event.is_set():
+                # 退出循环
                 break
 
             # 轮询休眠 heart 秒
@@ -104,6 +107,7 @@ class ThreadStatus:
         if usedisk <= 0:
             if self._pausedisk < self._totaldisk * 0.9:
                 logging_capture.info(f"已有足够空间，释放线程池")
+                # 提前退出循环
                 for event in [self.download_continue_event, self.decompress_continue_event,
                               self.compress_continue_event]:
                     event.set()
@@ -111,11 +115,9 @@ class ThreadStatus:
             if usedisk > self._totaldisk * 0.9:
                 raise FileTooLarge(f"文件过大，文件大小为{usedisk}字节")
             if self._pausedisk > self._totaldisk * 0.9:
-                logging_capture.warning(f"目前已预留空间{self._pausedisk},总空间{self._totaldisk*0.9},已等待有足够空间后释放")
-                for event in [self.download_continue_event, self.decompress_continue_event,
-                              self.compress_continue_event]:
-                    event.clear()
-
+                logging_capture.warning(f"目前已预留空间{self._pausedisk},总空间{self._totaldisk * 0.9},等待所有线程完成后释放")
+                t = threading.Thread(target=self.waiting_release_disk, daemon=True)
+                t.start()
 
 @dataclass
 class ProcessThread:
