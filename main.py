@@ -159,6 +159,7 @@ class ProcessThread:
         try:
             threadstatus.download_continue_event.wait()
             threadstatus.throttling = pause_sizes
+            logging_capture.info(f"开始下载: {name}")
             for file in paths:
                 rclone.copyfile(file, cls._get_name(name)["download"], replace_name=None)
             logging_capture.info(f"下载步骤完成: {name}")
@@ -195,6 +196,7 @@ class ProcessThread:
         threadstatus.decompress_continue_event.wait()
         try:
             #todo 增加错误重试,这里有坑，不能多次解压已成功的，没有抓响应码
+            logging_capture.info(f"开始解压: {name}")
             fileprocess.decompress(cls._get_name(name)["download"], cls._get_name(name)["decompress"], passwords=passwords)
             log = f"解压步骤完成: {name}"
             logging_capture.info(log)
@@ -241,6 +243,7 @@ class ProcessThread:
         release_sizes = -sizes * cls.decompress_magnification
         threadstatus.compress_continue_event.wait()
         try:
+            logging_capture.info(f"开始压缩: {name}")
             # noinspection PyTypeChecker
             fileprocess.compress(cls._get_name(name)["decompress"], cls._get_name(name)["compress"], password=password,
                                  mx=mx, volumes=volumes)
@@ -274,6 +277,7 @@ class ProcessThread:
         release_sizes = sizes * cls.compress_magnification
         threadstatus.upload_continue_event.wait()
         try:
+            logging_capture.info(f"开始上传: {name}")
             rclone.move(cls._get_name(name)["compress"],cls._get_name(name)["upload"])
             logging_capture.info(f"上传步骤完成: {name}")
             database.update_status(basename=name, step=4,status=1)
