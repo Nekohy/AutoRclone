@@ -107,17 +107,14 @@ class ThreadStatus:
         if usedisk <= 0:
             if self._pausedisk < self._totaldisk * 0.9:
                 logging_capture.info(f"已有足够空间，释放线程池")
-                # 提前退出循环
-                for event in [self.download_continue_event, self.decompress_continue_event,
-                              self.compress_continue_event]:
-                    event.set()
+                # 退出循环
+                self.download_continue_event.set()
         elif usedisk > 0:
             if usedisk > self._totaldisk * 0.9:
                 raise FileTooLarge(f"文件过大，文件大小为{usedisk}字节")
             if self._pausedisk > self._totaldisk * 0.9:
-                logging_capture.warning(f"目前已预留空间{self._pausedisk},总空间{self._totaldisk * 0.9},等待所有线程完成后释放")
-                t = threading.Thread(target=self.waiting_release_disk, daemon=True)
-                t.start()
+                logging_capture.warning(f"目前已预留空间{self._pausedisk},总空间{self._totaldisk * 0.9},等待目前有释放空间后释放线程")
+                self.download_continue_event.clear()
 
 @dataclass
 class ProcessThread:
