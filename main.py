@@ -157,7 +157,7 @@ class ProcessThread:
         try:
             threadstatus.download_continue_event.wait()
             threadstatus.throttling = pause_sizes
-            logging_capture.info(f"开始下载: {name}")
+            logging_capture.info(f"开始下载: {name}，大小{sizes}字节")
             for file in paths:
                 rclone.copyfile(file, cls._get_name(name)["download"], replace_name=None)
             logging_capture.info(f"下载步骤完成: {name}")
