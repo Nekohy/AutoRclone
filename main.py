@@ -190,7 +190,7 @@ class ProcessThread:
         # 传递文件大小进行流控
         name,paths,sizes = cls._parse_files_info(files_info)
         pause_sizes = sizes * (cls.decompress_magnification + cls.compress_magnification)
-        release_sizes = -sizes * cls.download_magnification
+        release_sizes = sizes * cls.download_magnification
         threadstatus.decompress_continue_event.wait()
         try:
             #todo 增加错误重试,这里有坑，不能多次解压已成功的，没有抓响应码
@@ -238,7 +238,7 @@ class ProcessThread:
         # 传递文件大小进行流控
         name,paths,sizes = cls._parse_files_info(files_info)
         pause_sizes = sizes * cls.compress_magnification
-        release_sizes = -sizes * cls.decompress_magnification
+        release_sizes = sizes * cls.decompress_magnification
         threadstatus.compress_continue_event.wait()
         try:
             logging_capture.info(f"开始压缩: {name}")
