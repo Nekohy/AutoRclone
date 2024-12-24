@@ -20,6 +20,8 @@ class Rclone:
         self.args = ["rcd","--rc-no-auth",f"--rc-addr={self.link}"]
         # 是否检验文件完整性
         self.checknum = True
+        # 储存Rclone进程
+        self.process = None
 
     def __requests(self,params,json):
         result = requests.post(f"http://{self.link}{params}",
@@ -31,7 +33,7 @@ class Rclone:
     def start_rclone(self):
         try:
             cmd = [self.rclone] + self.args
-            process = subprocess.Popen(
+            self.process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,  # 捕获标准输出
                 stderr=subprocess.PIPE,  # 捕获标准错误
@@ -39,11 +41,16 @@ class Rclone:
                 bufsize=1,  # 行缓冲
                 universal_newlines=True,  # 文本模式
             )
-            print(f"已启动进程 PID: {process.pid}")
-            return process
+            print(f"已启动进程 PID: {self.process.pid}")
+            return self.process
 
         except Exception as e:
             raise RcloneError(f"启动应用程序失败: {e}")
+
+    def stop_rclone(self):
+        if self.process:
+            self.process.terminate()  # 优雅终止进程
+            self.process.wait()  # 等待进程结束
 
     def copy(self,source,dst):
         json = {

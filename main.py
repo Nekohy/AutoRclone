@@ -329,7 +329,7 @@ class ProcessThread:
             # 如果所有任务完成，关闭Rclone并结束
             if all(future.done() for future in total_futures):
                 logging_capture.info("所有任务已完成")
-                process.kill()
+                rclone.stop_rclone()
                 break
 
 
