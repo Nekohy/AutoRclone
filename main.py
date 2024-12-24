@@ -169,18 +169,15 @@ class ProcessThread:
             database.update_status(basename=name,step=1,status=3)
             shutil.rmtree(str(cls._get_name(name)["download"]))
             threadstatus.throttling = -pause_sizes
-            raise
         except FileTooLarge as e:
             logging_capture.warning(e)
             database.update_status(basename=name, step=1, status=3,log=str(e))
             threadstatus.throttling = -pause_sizes
-            raise
         except Exception as e:
             logging_capture.error(f"当前任务{name}下载过程未知出错{e}")
             database.update_status(basename=name, step=1, status=4)
             shutil.rmtree(str(cls._get_name(name)["download"]))
             threadstatus.throttling = -pause_sizes
-            raise
         finally:
             threadstatus.throttling = -release_sizes
             pass
@@ -206,28 +203,24 @@ class ProcessThread:
             database.update_status(basename=name, step=2, status=2, log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
             threadstatus.throttling = -pause_sizes
-            raise
         except NoExistDecompressDir:
             log = f"当前任务{name}不存在"
             logging_capture.warning(log)
             database.update_status(basename=name, step=2, status=3, log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
             threadstatus.throttling = -pause_sizes
-            raise
         except UnpackError as e:
             log = f"当前任务{name}解压过程出错{e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=2, status=3,log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
             threadstatus.throttling = -pause_sizes
-            raise
         except Exception as e:
             log = f"当前任务{name}解压过程未知出错{e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=2, status=4, log=log)
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
             threadstatus.throttling = -pause_sizes
-            raise
         finally:
             # 释放空间
             shutil.rmtree(str(cls._get_name(name)["download"]))
@@ -254,14 +247,12 @@ class ProcessThread:
             database.update_status(basename=name, step=3, status=3, log=log)
             shutil.rmtree(str(cls._get_name(name)["compress"]))
             threadstatus.throttling = -pause_sizes
-            raise
         except Exception as e:
             log = f"当前任务{name}压缩过程未知出错{e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=3, status=4,log=log)
             shutil.rmtree(str(cls._get_name(name)["compress"]))
             threadstatus.throttling = -pause_sizes
-            raise
         finally:
             # 释放空间
             shutil.rmtree(str(cls._get_name(name)["decompress"]))
@@ -284,13 +275,11 @@ class ProcessThread:
             logging_capture.error(log)
             database.update_status(basename=name, step=4, status=3, log=log)
             threadstatus.throttling = -pause_sizes
-            raise
         except Exception as e:
             log = f"当前任务{name}上传过程未知出错{e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=4, status=4, log=log)
             threadstatus.throttling = -pause_sizes
-            raise
         finally:
             # 释放空间
             shutil.rmtree(str(cls._get_name(name)["compress"]))
