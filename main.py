@@ -304,7 +304,7 @@ class ProcessThread:
 
     @classmethod
     def start_threads(cls):
-        total_futures = []
+        total_futures = set()
         # 循环把每个threadstatus Queue的内容用来启动线程
         while True:
             download_futures = cls._start_threads(function=cls.download_thread,queue=threadstatus.download_queue,threads=threadstatus.download_threads)
@@ -314,7 +314,7 @@ class ProcessThread:
             # 写入当前任务到一个总的futures
             for futures in [download_futures,decompress_futures,compress_futures,upload_futures]:
                 if futures:
-                    total_futures.extend(futures)
+                    total_futures.update(futures)
             # 如果所有任务完成，关闭Rclone并结束
             if all(future.done() for future in total_futures):
                 logging_capture.info("所有任务已完成")
