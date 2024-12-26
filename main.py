@@ -303,7 +303,7 @@ class ProcessThread:
             return futures
 
     @classmethod
-    def start_threads(cls):
+    def start_threads(cls,heart):
         total_futures = set()
         # 循环把每个threadstatus Queue的内容用来启动线程
         while True:
@@ -320,6 +320,9 @@ class ProcessThread:
                 logging_capture.info("所有任务已完成")
                 rclone.stop_rclone()
                 break
+
+            # 轮询休眠 heart 秒
+            time.sleep(heart)
 
 
 @contextmanager
@@ -382,7 +385,7 @@ def main():
         threadstatus.download_queue.put(task)
     logging_capture.info(f"已读取到{len(tasks)}条任务")
     # 启动线程
-    ProcessThread.start_threads()
+    ProcessThread.start_threads(heart)
 
 # 覆盖系统内变量
 load_dotenv(override=True)
