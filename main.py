@@ -105,6 +105,7 @@ class ThreadStatus:
         """
         self._pausedisk += usedisk
         if usedisk <= 0:
+            logging_capture.info(f"已释放空间{usedisk},目前暂停{self._pausedisk},总空间{self._totaldisk * 0.9}")
             if self._pausedisk < self._totaldisk * 0.9 and not self.download_continue_event.is_set():
                 logging_capture.info(f"已有足够空间，释放线程池")
                 # 退出循环
