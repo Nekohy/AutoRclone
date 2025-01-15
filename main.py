@@ -54,9 +54,9 @@ class ThreadStatus:
         self.upload_continue_event.set()
         # Threads用于储存所有的Threads,最大值为max_thread
         self.download_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
-        self.decompress_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
-        self.compress_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
-        self.upload_threads = concurrent.futures.ThreadPoolExecutor(max_workers=self.max_thread)
+        self.decompress_threads = concurrent.futures.ThreadPoolExecutor()
+        self.compress_threads = concurrent.futures.ThreadPoolExecutor()
+        self.upload_threads = concurrent.futures.ThreadPoolExecutor()
 
     # 暂时用不上
     def waiting_release_disk(self):
@@ -106,7 +106,7 @@ class ThreadStatus:
         self._pausedisk += usedisk
         if usedisk <= 0:
             logging_capture.info(f"已释放空间{usedisk},目前暂停{self._pausedisk},总空间{self._totaldisk * 0.9}")
-            if self._pausedisk < self._totaldisk * 0.9 and not self.download_continue_event.is_set():
+            if self._pausedisk <= self._totaldisk * 0.9 and not self.download_continue_event.is_set():
                 logging_capture.info(f"已有足够空间，释放线程池")
                 # 退出循环
                 self.download_continue_event.set()
@@ -114,7 +114,7 @@ class ThreadStatus:
             if usedisk > self._totaldisk * 0.9:
                 self._pausedisk -= usedisk
                 raise FileTooLarge(f"文件过大，文件大小为{usedisk}字节")
-            if self._pausedisk > self._totaldisk * 0.9:
+            if self._pausedisk >= self._totaldisk * 0.9:
                 logging_capture.warning(f"目前已预留空间{self._pausedisk},总空间{self._totaldisk * 0.9},等待目前有释放空间后释放线程")
                 self.download_continue_event.clear()
 
