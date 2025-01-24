@@ -89,9 +89,8 @@ class ThreadStatus:
         bytes_recv_diff = current_net_io.bytes_recv - self._prev_net_io.bytes_recv
 
         if time_diff > 0:
-            # 转换为 MB/s
-            self._upload_speed = bytes_sent_diff / time_diff / (1024 * 1024)
-            self._download_speed = bytes_recv_diff / time_diff / (1024 * 1024)
+            self._upload_speed = (bytes_sent_diff * 8) / time_diff / 1_000_000  # Mbps
+            self._download_speed = (bytes_recv_diff * 8) / time_diff / 1_000_000  # Mbps
         # 更新之前的值
         self._prev_net_io = current_net_io
         self._prev_time = current_time
