@@ -13,6 +13,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Callable, Any
 from threading import Lock
+
+import psutil
 from dotenv import load_dotenv
 from flask import Flask, jsonify
 
@@ -55,6 +57,12 @@ class ThreadStatus:
     unfinished_tasks: int = field(default=0)
     total_tasks: int = field(default=0)
 
+    # 网络速度监控属性
+    _prev_net_io: psutil._common.snetio = field(default_factory=lambda: psutil.net_io_counters())
+    _prev_time: float = field(default_factory=lambda: time.time())
+    _upload_speed: float = field(default=0.0)  # MB/s
+    _download_speed: float = field(default=0.0)  # MB/s
+
 
     def __post_init__(self):
         self._totaldisk = self._freedisk = self.max_spaces
@@ -69,6 +77,24 @@ class ThreadStatus:
         self.decompress_threads = concurrent.futures.ThreadPoolExecutor()
         self.compress_threads = concurrent.futures.ThreadPoolExecutor()
         self.upload_threads = concurrent.futures.ThreadPoolExecutor()
+
+
+    def update_network_speed(self):
+        current_net_io = psutil.net_io_counters()
+        current_time = time.time()
+        time_diff = current_time - self._prev_time
+
+        # 计算上传和下载速度（Bytes/s）
+        bytes_sent_diff = current_net_io.bytes_sent - self._prev_net_io.bytes_sent
+        bytes_recv_diff = current_net_io.bytes_recv - self._prev_net_io.bytes_recv
+
+        if time_diff > 0:
+            # 转换为 MB/s
+            self._upload_speed = bytes_sent_diff / time_diff / (1024 * 1024)
+            self._download_speed = bytes_recv_diff / time_diff / (1024 * 1024)
+        # 更新之前的值
+        self._prev_net_io = current_net_io
+        self._prev_time = current_time
 
 
     # 暂时用不上
@@ -99,6 +125,21 @@ class ThreadStatus:
     @property
     def throttling(self):
         with self.lock, self.aggregate_lock:
+            # 更新网络速度
+            self.update_network_speed()
+
+            # 获取CPU使用率
+            cpu_usage = psutil.cpu_percent(interval=None)
+
+            # 获取CPU核心数量
+            cpu_cores = psutil.cpu_count(logical=True)
+
+            # 获取内存信息
+            memory = psutil.virtual_memory()
+            memory_usage = memory.percent
+            total_memory = memory.total  # 总内存（Bytes）
+            available_memory = memory.available  # 可用内存（Bytes）
+
             return {
                 "totaldisk": self._totaldisk,
                 "pausedisk": self._pausedisk,
@@ -112,6 +153,19 @@ class ThreadStatus:
                 "total_errors": self.total_errors,
                 "unfinished_tasks": self.unfinished_tasks,
                 "total_tasks": self.total_tasks,
+                "system": {
+                    "cpu_usage_percent": cpu_usage,
+                    "cpu_cores": cpu_cores,
+                    "memory": {
+                        "total_memory_bytes": total_memory,
+                        "available_memory_bytes": available_memory,
+                        "memory_usage_percent": memory_usage
+                    },
+                    "network": {
+                        "upload_speed_mbps": self._upload_speed,
+                        "download_speed_mbps": self._download_speed,
+                    }
+                }
             }
 
     @throttling.setter
