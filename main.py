@@ -146,8 +146,8 @@ class ThreadStatus:
             # 获取内存信息
             memory = psutil.virtual_memory()
             memory_usage = memory.percent
-            total_memory = memory.total  # 总内存（Bytes）
-            available_memory = memory.available  # 可用内存（Bytes）
+            total_memory_gb = round(memory.total / (1024 ** 3), 2)  # 总内存（GB）
+            available_memory_gb = round(memory.available / (1024 ** 3), 2)  # 可用内存（GB）
 
             return {
                 "totaldisk": self._totaldisk,
@@ -163,12 +163,14 @@ class ThreadStatus:
                 "unfinished_tasks": self.unfinished_tasks,
                 "total_tasks": self.total_tasks,
                 "system": {
-                    "cpu_usage_percent": cpu_usage /100,
-                    "cpu_cores": cpu_cores,
+                    "cpu": {
+                        "cpu_cores": cpu_cores,
+                        "cpu_usage_percent": cpu_usage / 100,
+                    },
                     "memory": {
-                        "total_memory_bytes": total_memory,
-                        "available_memory_bytes": available_memory,
-                        "memory_usage_percent": memory_usage
+                        "total_memory_gb": total_memory_gb,
+                        "available_memory_gb": available_memory_gb,
+                        "memory_usage_percent": memory_usage / 100
                     },
                     "network": {
                         "upload_speed_mbps": self._upload_speed,
