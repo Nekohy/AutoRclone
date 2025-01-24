@@ -280,8 +280,6 @@ class ProcessThread:
             database.update_status(basename=name, step=1)
             # 添加到解压Queue当前files_info
             threadstatus.decompress_queue.put(files_info)
-            # 更新总完成任务数
-            threadstatus.increment_completed()
         except (RcloneError, FileTooLarge) as e:
             logging_capture.error(f"当前任务{name}下载过程出错: {e}")
             database.update_status(basename=name, step=1, status=3, log=str(e))
@@ -322,8 +320,6 @@ class ProcessThread:
             database.update_status(basename=name, step=2)
             # 添加到压缩Queue当前files_info
             threadstatus.compress_queue.put(files_info)
-            # 更新总完成任务数
-            threadstatus.increment_completed()
         except NoRightPasswd:
             log = f"当前任务{name}无正确的解压密码"
             logging_capture.warning(log)
@@ -390,8 +386,6 @@ class ProcessThread:
             database.update_status(basename=name, step=3)
             # 添加到上传Queue当前files_info
             threadstatus.upload_queue.put(files_info)
-            # 更新总完成任务数
-            threadstatus.increment_completed()
         except PackError as e:
             log = f"当前任务{name}压缩过程出错: {e}"
             logging_capture.error(log)
