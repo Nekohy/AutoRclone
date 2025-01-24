@@ -154,7 +154,7 @@ class ThreadStatus:
                 "unfinished_tasks": self.unfinished_tasks,
                 "total_tasks": self.total_tasks,
                 "system": {
-                    "cpu_usage_percent": cpu_usage,
+                    "cpu_usage_percent": cpu_usage /100,
                     "cpu_cores": cpu_cores,
                     "memory": {
                         "total_memory_bytes": total_memory,
