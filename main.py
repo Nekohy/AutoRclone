@@ -15,6 +15,7 @@ from queue import Queue
 from typing import Callable, Any
 
 from dotenv import load_dotenv
+from flask import Flask, jsonify
 
 from Exception import NoRightPasswd, UnpackError, PackError, RcloneError, NoExistDecompressDir, FileTooLarge
 from fileprocess import FileProcess
@@ -391,7 +392,15 @@ def main():
 # 覆盖系统内变量
 load_dotenv(override=True)
 
+@app.route('/throttling', methods=['GET'])
+def get_throttling():
+    return jsonify(threadstatus.throttling)
+
+def run_flask():
+    app.run(host='0.0.0.0', port=30000)
+
 if __name__ == "__main__":
+    app = Flask(__name__)
     args = load_env()
     # Use parsed arguments
     max_threads = args.max_threads
@@ -421,6 +430,10 @@ if __name__ == "__main__":
     # 传递空间，若为0则不限制，否则限制空间
     threadstatus = ThreadStatus(max_thread=max_threads, heart=heart, max_spaces=fileprocess.get_free_size(tmp) if max_spaces == 0 else max_spaces)
 
+    # 启动 Flask 应用在一个单独的线程
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
     # 启动rclone
     process = rclone.start_rclone()
 
