@@ -578,6 +578,7 @@ def load_env():
     parser.add_argument('--loglevel',type=log_level_type,default=os.getenv('LOGLEVEL', "INFO"), help='Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
     parser.add_argument('--console_log',type=bool,default=os.getenv('CONSOLE_LOG', True),help='是否输出到控制台')
     parser.add_argument('--max_spaces',type=int,default=os.getenv("MAX_SPACES",0),help='脚本允许使用的最大缓存空间,单位字节，为0为不限制（均预留10%容灾空间）')
+    parser.add_argument('--interface', type=str, default=os.getenv('INTERFACE', None), help='指定要监控的网络接口名称')
     args = parser.parse_args()
     return args
 
