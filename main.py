@@ -392,6 +392,7 @@ def main():
 # 覆盖系统内变量
 load_dotenv(override=True)
 
+app = Flask(__name__)
 @app.route('/throttling', methods=['GET'])
 def get_throttling():
     return jsonify(threadstatus.throttling)
@@ -400,7 +401,6 @@ def run_flask():
     app.run(host='0.0.0.0', port=30000)
 
 if __name__ == "__main__":
-    app = Flask(__name__)
     args = load_env()
     # Use parsed arguments
     max_threads = args.max_threads
