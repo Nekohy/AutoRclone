@@ -11,7 +11,7 @@ from concurrent.futures import Future
 from concurrent.futures.thread import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Callable, Any
+from typing import Callable, Any, Optional
 from threading import Lock
 
 import psutil
@@ -34,6 +34,7 @@ class ThreadStatus:
     max_spaces:int = field(init=True)
     # 轮询监听时间
     heart:int = field(init=True)
+    interface: Optional[str] = field(default=None)  # 新增字段，用于存储网卡名称
     # 全局线程状态，set则可以继续添加
     download_continue_event: threading.Event =  field(default_factory=threading.Event)
     decompress_continue_event: threading.Event = field(default_factory=threading.Event)
@@ -80,7 +81,16 @@ class ThreadStatus:
 
 
     def update_network_speed(self):
-        current_net_io = psutil.net_io_counters()
+        if self.interface:
+            net_io = psutil.net_io_counters(pernic=True)
+            if self.interface in net_io:
+                current_net_io = net_io[self.interface]
+            else:
+                logging_capture.warning(f"指定的网卡 '{self.interface}' 未找到，使用默认网卡统计。")
+                current_net_io = psutil.net_io_counters()
+        else:
+            current_net_io = psutil.net_io_counters()
+
         current_time = time.time()
         time_diff = current_time - self._prev_time
 
@@ -622,6 +632,7 @@ if __name__ == "__main__":
     heart = args.heart
     console_log = args.console_log
     max_spaces = args.max_spaces
+    interface = args.interface  # 传递网卡名称
 
     # 初始化实例
     logging_capture = setup_logger(logger_name='AutoRclone', log_file=logfile,console_log=console_log,level=loglevel)
@@ -629,7 +640,13 @@ if __name__ == "__main__":
     rclone = OwnRclone(rclone)
     fileprocess = FileProcess(mmt=mmt, p7zip_file=p7zip_file, autodelete=True)
     # 传递空间，若为0则不限制，否则限制空间
-    threadstatus = ThreadStatus(max_thread=max_threads, heart=heart, max_spaces=fileprocess.get_free_size(tmp) if max_spaces == 0 else max_spaces)
+    # 传递空间，若为0则不限制，否则限制空间
+    threadstatus = ThreadStatus(
+        max_thread=max_threads,
+        heart=heart,
+        max_spaces=fileprocess.get_free_size(tmp) if max_spaces == 0 else max_spaces,
+        interface=interface  # 传递网卡名称
+    )
 
     # 启动 Flask 应用在一个单独的线程
     flask_thread = threading.Thread(target=run_flask)
