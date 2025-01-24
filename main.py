@@ -3,7 +3,7 @@ import argparse
 import concurrent.futures
 import logging
 import os
-import queue
+from queue import Queue, Empty
 import shutil
 import threading
 import time
@@ -11,9 +11,8 @@ from concurrent.futures import Future
 from concurrent.futures.thread import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from queue import Queue
 from typing import Callable, Any
-
+from threading import Lock
 from dotenv import load_dotenv
 from flask import Flask, jsonify
 
@@ -39,10 +38,22 @@ class ThreadStatus:
     compress_continue_event: threading.Event = field(default_factory=threading.Event)
     upload_continue_event: threading.Event = field(default_factory=threading.Event)
     # Queue用来全局储存当前*所有*任务的Files_info
-    download_queue: queue.Queue = field(default_factory=queue.Queue)
-    decompress_queue:queue.Queue = field(default_factory=queue.Queue)
-    compress_queue:queue.Queue = field(default_factory=queue.Queue)
-    upload_queue:queue.Queue = field(default_factory=queue.Queue)
+    download_queue: Queue = field(default_factory=Queue)
+    decompress_queue:Queue = field(default_factory=Queue)
+    compress_queue:Queue = field(default_factory=Queue)
+    upload_queue:Queue = field(default_factory=Queue)
+    # 活跃的下载
+    active_download: int = field(default=0)
+    active_decompress: int = field(default=0)
+    active_compress: int = field(default=0)
+    active_upload: int = field(default=0)
+    lock: Lock = field(default_factory=Lock)
+    # 通过这些计数器的新锁确保线程安全
+    aggregate_lock: Lock = field(default_factory=Lock)
+    total_completed: int = field(default=0)
+    total_errors: int = field(default=0)
+    unfinished_tasks: int = field(default=0)
+    total_tasks: int = field(default=0)
 
 
     def __post_init__(self):
@@ -58,6 +69,7 @@ class ThreadStatus:
         self.decompress_threads = concurrent.futures.ThreadPoolExecutor()
         self.compress_threads = concurrent.futures.ThreadPoolExecutor()
         self.upload_threads = concurrent.futures.ThreadPoolExecutor()
+
 
     # 暂时用不上
     def waiting_release_disk(self):
@@ -83,17 +95,24 @@ class ThreadStatus:
             # 轮询休眠 heart 秒
             time.sleep(self.heart)
 
+    # 在 throttling 属性中添加 active 任务
     @property
     def throttling(self):
-        # 返回当前任务流控数据
-        return {"totaldisk":self._totaldisk,
-                "pausedisk":self._pausedisk,
-                "num":{
-                    "download_num":self.download_queue.qsize(),
-                    "decompress_num":self.decompress_queue.qsize(),
-                    "compress_num":self.compress_queue.qsize(),
-                    "upload_num":self.upload_queue.qsize()
-                }}
+        with self.lock, self.aggregate_lock:
+            return {
+                "totaldisk": self._totaldisk,
+                "pausedisk": self._pausedisk,
+                "active": {
+                    "active_download": self.active_download,
+                    "active_decompress": self.active_decompress,
+                    "active_compress": self.active_compress,
+                    "active_upload": self.active_upload,
+                },
+                "total_completed": self.total_completed,
+                "total_errors": self.total_errors,
+                "unfinished_tasks": self.unfinished_tasks,
+                "total_tasks": self.total_tasks,
+            }
 
     @throttling.setter
     def throttling(self, usedisk):
@@ -119,6 +138,24 @@ class ThreadStatus:
                 logging_capture.warning(f"目前已预留空间{self._pausedisk},总空间{self._totaldisk * 0.9},等待目前有释放空间后释放线程")
                 self.download_continue_event.clear()
 
+    # 添加方法以更新计数器
+
+    def increment_completed(self):
+        with self.aggregate_lock:
+            self.total_completed += 1
+            self.unfinished_tasks -= 1
+
+    def increment_errors(self):
+        with self.aggregate_lock:
+            self.total_errors += 1
+            self.unfinished_tasks -= 1
+
+    def add_tasks(self, count: int):
+        with self.aggregate_lock:
+            self.total_tasks += count
+            self.unfinished_tasks += count
+
+# ProcessThread 类
 @dataclass
 class ProcessThread:
     download_magnification = 1
@@ -129,7 +166,11 @@ class ProcessThread:
 
     @classmethod
     def _parse_files_info(cls, files_info):
-        # 解析文件信息
+        """
+        解析文件信息
+        :param files_info: 文件信息
+        :return: 返回文件名、路径列表和总大小
+        """
         name: str = files_info[0]
         # 所有对应的文件路径和总大小
         paths: list = files_info[1]['paths']
@@ -138,11 +179,15 @@ class ProcessThread:
 
     @staticmethod
     def _get_name(name):
-        # 构建路径,防止Windows作妖
+        """
+        构建各阶段的路径，防止Windows路径问题
+        :param name: 文件名
+        :return: 返回包含各阶段路径的字典
+        """
         download = os.path.join(tmp, "download", name).replace("\\", "/")
         decompress = os.path.join(tmp, "decompress", name).replace("\\", "/")
         compress = os.path.join(tmp, "compress", name).replace("\\", "/")
-        #todo 修改此处upload为目录树
+        # todo 修改此处upload为目录树
         upload = os.path.join(dst, name).replace("\\", "/")
         return {"download": download, "decompress": decompress, "compress": compress, "upload": upload}
 
@@ -151,14 +196,20 @@ class ProcessThread:
     """
 
     @classmethod
-    def download_thread(cls,files_info):
-        # 传递文件大小进行流控
-        name,paths,sizes = cls._parse_files_info(files_info)
+    def download_thread(cls, files_info):
+        """
+        下载线程
+        :param files_info: 文件信息
+        """
+        name, paths, sizes = cls._parse_files_info(files_info)
         pause_sizes = sizes * (cls.download_magnification + cls.decompress_magnification + cls.compress_magnification)
-        release_sizes = 0
+        release_sizes = 0  # 暂时释放大小为0
         try:
+            # 等待下载事件被设置
             threadstatus.download_continue_event.wait()
-            threadstatus.throttling = pause_sizes
+            with threadstatus.lock:
+                threadstatus.active_download += 1
+                threadstatus.throttling = pause_sizes
             logging_capture.info(f"开始下载: {name}，大小{sizes}字节")
             for file in paths:
                 rclone.copyfile(file, cls._get_name(name)["download"], replace_name=None)
@@ -166,164 +217,253 @@ class ProcessThread:
             database.update_status(basename=name, step=1)
             # 添加到解压Queue当前files_info
             threadstatus.decompress_queue.put(files_info)
-        except RcloneError as e:
-            logging_capture.error(f"当前任务{name}下载过程出错{e}")
-            database.update_status(basename=name,step=1,status=3)
-            shutil.rmtree(str(cls._get_name(name)["download"]))
-            threadstatus.throttling = -pause_sizes
-        except FileTooLarge as e:
-            logging_capture.warning(e)
-            database.update_status(basename=name, step=1, status=3,log=str(e))
-            threadstatus.throttling = -pause_sizes
+            # 更新总完成任务数
+            threadstatus.increment_completed()
+        except (RcloneError, FileTooLarge) as e:
+            logging_capture.error(f"当前任务{name}下载过程出错: {e}")
+            database.update_status(basename=name, step=1, status=3, log=str(e))
+            # 更新总错误任务数
+            threadstatus.increment_errors()
+            shutil.rmtree(str(cls._get_name(name)["download"]), ignore_errors=True)
         except Exception as e:
-            logging_capture.error(f"当前任务{name}下载过程未知出错{e}")
-            database.update_status(basename=name, step=1, status=4)
-            shutil.rmtree(str(cls._get_name(name)["download"]))
-            threadstatus.throttling = -pause_sizes
+            logging_capture.error(f"当前任务{name}下载过程未知出错: {e}")
+            database.update_status(basename=name, step=1, status=4, log=str(e))
+            # 更新总错误任务数
+            threadstatus.increment_errors()
+            shutil.rmtree(str(cls._get_name(name)["download"]), ignore_errors=True)
         finally:
             threadstatus.throttling = -release_sizes
-            pass
+            with threadstatus.lock:
+                threadstatus.active_download -= 1
+                threadstatus.throttling = -pause_sizes
 
     @classmethod
-    def decompress_thread(cls,files_info):
-        # 传递文件大小进行流控
-        name,paths,sizes = cls._parse_files_info(files_info)
+    def decompress_thread(cls, files_info):
+        """
+        解压线程
+        :param files_info: 文件信息
+        """
+        name, paths, sizes = cls._parse_files_info(files_info)
         pause_sizes = sizes * (cls.decompress_magnification + cls.compress_magnification)
         release_sizes = sizes * cls.download_magnification
-        threadstatus.decompress_continue_event.wait()
         try:
-            #todo 增加错误重试,这里有坑，不能多次解压已成功的，没有抓响应码
+            # 等待解压事件被设置
+            threadstatus.decompress_continue_event.wait()
+            with threadstatus.lock:
+                threadstatus.active_decompress += 1
+                threadstatus.throttling = pause_sizes
+            # todo 增加错误重试,这里有坑，不能多次解压已成功的，没有抓响应码
             logging_capture.info(f"开始解压: {name}")
             fileprocess.decompress(cls._get_name(name)["download"], cls._get_name(name)["decompress"], passwords=passwords)
-            log = f"解压步骤完成: {name}"
-            logging_capture.info(log)
+            logging_capture.info(f"解压步骤完成: {name}")
             database.update_status(basename=name, step=2)
+            # 添加到压缩Queue当前files_info
             threadstatus.compress_queue.put(files_info)
+            # 更新总完成任务数
+            threadstatus.increment_completed()
         except NoRightPasswd:
             log = f"当前任务{name}无正确的解压密码"
             logging_capture.warning(log)
             database.update_status(basename=name, step=2, status=2, log=log)
-            shutil.rmtree(str(cls._get_name(name)["decompress"]))
-            threadstatus.throttling = -pause_sizes
+            # 更新总错误任务数
+            threadstatus.increment_errors()
+            shutil.rmtree(str(cls._get_name(name)["decompress"]), ignore_errors=True)
         except NoExistDecompressDir:
-            log = f"当前任务{name}不存在"
+            log = f"当前任务{name}不存在解压目录"
             logging_capture.warning(log)
             database.update_status(basename=name, step=2, status=3, log=log)
-            shutil.rmtree(str(cls._get_name(name)["decompress"]))
-            threadstatus.throttling = -pause_sizes
+            # 更新总错误任务数
+            threadstatus.increment_errors()
+            shutil.rmtree(str(cls._get_name(name)["decompress"]), ignore_errors=True)
         except UnpackError as e:
-            log = f"当前任务{name}解压过程出错{e}"
+            log = f"当前任务{name}解压过程出错: {e}"
             logging_capture.error(log)
-            database.update_status(basename=name, step=2, status=3,log=log)
-            shutil.rmtree(str(cls._get_name(name)["decompress"]))
-            threadstatus.throttling = -pause_sizes
+            database.update_status(basename=name, step=2, status=3, log=log)
+            # 更新总错误任务数
+            threadstatus.increment_errors()
+            shutil.rmtree(str(cls._get_name(name)["decompress"]), ignore_errors=True)
         except Exception as e:
-            log = f"当前任务{name}解压过程未知出错{e}"
+            log = f"当前任务{name}解压过程未知出错: {e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=2, status=4, log=log)
-            shutil.rmtree(str(cls._get_name(name)["decompress"]))
-            threadstatus.throttling = -pause_sizes
+            # 更新总错误任务数
+            threadstatus.increment_errors()
+            shutil.rmtree(str(cls._get_name(name)["decompress"]), ignore_errors=True)
         finally:
-            # 释放空间
-            shutil.rmtree(str(cls._get_name(name)["download"]))
+            # 释放下载阶段占用的磁盘空间
+            shutil.rmtree(str(cls._get_name(name)["download"]), ignore_errors=True)
             threadstatus.throttling = -release_sizes
+            with threadstatus.lock:
+                threadstatus.active_decompress -= 1
 
     @classmethod
-    def compress_thread(cls,files_info):
-        # 传递文件大小进行流控
-        name,paths,sizes = cls._parse_files_info(files_info)
+    def compress_thread(cls, files_info):
+        """
+        压缩线程
+        :param files_info: 文件信息
+        """
+        name, paths, sizes = cls._parse_files_info(files_info)
         pause_sizes = sizes * cls.compress_magnification
         release_sizes = sizes * cls.decompress_magnification
-        threadstatus.compress_continue_event.wait()
         try:
+            # 等待压缩事件被设置
+            threadstatus.compress_continue_event.wait()
+            with threadstatus.lock:
+                threadstatus.active_compress += 1
+                threadstatus.throttling = pause_sizes
             logging_capture.info(f"开始压缩: {name}")
             # noinspection PyTypeChecker
-            fileprocess.compress(cls._get_name(name)["decompress"], cls._get_name(name)["compress"], password=password,
-                                 mx=mx, volumes=volumes)
+            fileprocess.compress(
+                cls._get_name(name)["decompress"],
+                cls._get_name(name)["compress"],
+                password=password,
+                mx=mx,
+                volumes=volumes
+            )
             logging_capture.info(f"压缩步骤完成: {name}")
             database.update_status(basename=name, step=3)
+            # 添加到上传Queue当前files_info
             threadstatus.upload_queue.put(files_info)
+            # 更新总完成任务数
+            threadstatus.increment_completed()
         except PackError as e:
-            log = f"当前任务{name}压缩过程出错{e}"
+            log = f"当前任务{name}压缩过程出错: {e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=3, status=3, log=log)
-            shutil.rmtree(str(cls._get_name(name)["compress"]))
-            threadstatus.throttling = -pause_sizes
+            # 更新总错误任务数
+            threadstatus.increment_errors()
+            shutil.rmtree(str(cls._get_name(name)["compress"]), ignore_errors=True)
         except Exception as e:
-            log = f"当前任务{name}压缩过程未知出错{e}"
+            log = f"当前任务{name}压缩过程未知出错: {e}"
             logging_capture.error(log)
-            database.update_status(basename=name, step=3, status=4,log=log)
-            shutil.rmtree(str(cls._get_name(name)["compress"]))
-            threadstatus.throttling = -pause_sizes
+            database.update_status(basename=name, step=3, status=4, log=log)
+            # 更新总错误任务数
+            threadstatus.increment_errors()
+            shutil.rmtree(str(cls._get_name(name)["compress"]), ignore_errors=True)
         finally:
-            # 释放空间
-            shutil.rmtree(str(cls._get_name(name)["decompress"]))
+            # 释放解压阶段占用的磁盘空间
+            shutil.rmtree(str(cls._get_name(name)["decompress"]), ignore_errors=True)
             threadstatus.throttling = -release_sizes
+            with threadstatus.lock:
+                threadstatus.active_compress -= 1
 
     @classmethod
-    def upload_thread(cls,files_info):
-        # 传递文件大小进行流控
-        name,paths,sizes = cls._parse_files_info(files_info)
+    def upload_thread(cls, files_info):
+        """
+        上传线程
+        :param files_info: 文件信息
+        """
+        name, paths, sizes = cls._parse_files_info(files_info)
         pause_sizes = 0
         release_sizes = sizes * cls.compress_magnification
-        threadstatus.upload_continue_event.wait()
         try:
+            # 等待上传事件被设置
+            threadstatus.upload_continue_event.wait()
+            with threadstatus.lock:
+                threadstatus.active_upload += 1
+                threadstatus.throttling = pause_sizes
             logging_capture.info(f"开始上传: {name}")
-            rclone.move(cls._get_name(name)["compress"],cls._get_name(name)["upload"])
+            rclone.move(cls._get_name(name)["compress"], cls._get_name(name)["upload"])
             logging_capture.info(f"上传步骤完成: {name}")
-            database.update_status(basename=name, step=4,status=1)
+            database.update_status(basename=name, step=4, status=1)
+            # 更新总完成任务数
+            threadstatus.increment_completed()
         except RcloneError as e:
-            log = f"当前任务{name}上传过程出错{e}"
+            log = f"当前任务{name}上传过程出错: {e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=4, status=3, log=log)
-            threadstatus.throttling = -pause_sizes
+            # 更新总错误任务数
+            threadstatus.increment_errors()
         except Exception as e:
-            log = f"当前任务{name}上传过程未知出错{e}"
+            log = f"当前任务{name}上传过程未知出错: {e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=4, status=4, log=log)
-            threadstatus.throttling = -pause_sizes
+            # 更新总错误任务数
+            threadstatus.increment_errors()
         finally:
-            # 释放空间
-            shutil.rmtree(str(cls._get_name(name)["compress"]))
+            # 释放压缩阶段占用的磁盘空间
+            shutil.rmtree(str(cls._get_name(name)["compress"]), ignore_errors=True)
             threadstatus.throttling = -release_sizes
+            with threadstatus.lock:
+                threadstatus.active_upload -= 1
 
     @staticmethod
     def parse_return_result(future):
+        """
+        处理线程完成后的结果（当前暂未实现）
+        :param future: 线程Future对象
+        """
         pass
 
     @classmethod
-    def _start_threads(cls, function:Callable, queue: Queue,threads:ThreadPoolExecutor) -> list[Future[Any]]:
-        # 把每个ThreadStatusQueue的内容用来启动线程
+    def _start_threads(cls, function: Callable, queue: Queue, threads: ThreadPoolExecutor) -> list[Future[Any]]:
+        """
+        启动线程池中的任务
+        :param function: 要执行的函数
+        :param queue: 任务队列
+        :param threads: 线程池执行器
+        :return: 返回Future对象列表
+        """
+        futures = []
         while not queue.empty():
-            # 把现有的Queue转换为可以传入的list
-            data_list = [queue.get_nowait() for _ in range(queue.qsize())]
+            try:
+                # 获取任务
+                data = queue.get_nowait()
+            except Empty:
+                break
             # 提交任务但不等待
-            futures = [threads.submit(function, data) for data in data_list]
+            future = threads.submit(function, data)
             # 为每个future添加回调，但不等待完成
-            for future in futures:
-                future.add_done_callback(lambda f: cls.parse_return_result(f))
-            return futures
+            future.add_done_callback(lambda f: cls.parse_return_result(f))
+            futures.append(future)
+        return futures
 
     @classmethod
-    def start_threads(cls,heart):
+    def start_threads(cls, heart):
+        """
+        启动所有阶段的线程，并持续监控任务状态
+        :param heart: 轮询间隔时间（秒）
+        """
         total_futures = set()
-        # 循环把每个threadstatus Queue的内容用来启动线程
+        # 循环启动各阶段的线程
         while True:
-            download_futures = cls._start_threads(function=cls.download_thread,queue=threadstatus.download_queue,threads=threadstatus.download_threads)
-            decompress_futures = cls._start_threads(function=cls.decompress_thread,queue=threadstatus.decompress_queue,threads=threadstatus.decompress_threads)
-            compress_futures = cls._start_threads(function=cls.compress_thread,queue=threadstatus.compress_queue,threads=threadstatus.compress_threads)
-            upload_futures = cls._start_threads(function=cls.upload_thread,queue=threadstatus.upload_queue,threads=threadstatus.upload_threads)
-            # 写入当前任务到一个总的futures
-            for futures in [download_futures,decompress_futures,compress_futures,upload_futures]:
-                if futures:
-                    total_futures.update(futures)
-            # 如果所有任务完成，关闭Rclone并结束
-            if all(future.done() for future in total_futures):
+            # 启动下载线程
+            download_futures = cls._start_threads(
+                function=cls.download_thread,
+                queue=threadstatus.download_queue,
+                threads=threadstatus.download_threads
+            )
+            # 启动解压线程
+            decompress_futures = cls._start_threads(
+                function=cls.decompress_thread,
+                queue=threadstatus.decompress_queue,
+                threads=threadstatus.decompress_threads
+            )
+            # 启动压缩线程
+            compress_futures = cls._start_threads(
+                function=cls.compress_thread,
+                queue=threadstatus.compress_queue,
+                threads=threadstatus.compress_threads
+            )
+            # 启动上传线程
+            upload_futures = cls._start_threads(
+                function=cls.upload_thread,
+                queue=threadstatus.upload_queue,
+                threads=threadstatus.upload_threads
+            )
+            # 将所有新的Future加入总集合
+            for futures in [download_futures, decompress_futures, compress_futures, upload_futures]:
+                total_futures.update(futures)
+            # 检查所有任务是否完成
+            if all(future.done() for future in total_futures) and \
+               threadstatus.download_queue.empty() and \
+               threadstatus.decompress_queue.empty() and \
+               threadstatus.compress_queue.empty() and \
+               threadstatus.upload_queue.empty():
                 logging_capture.info("所有任务已完成")
                 rclone.stop_rclone()
                 break
-
-            # 轮询休眠 heart 秒
+            # 轮询休眠heart秒
             time.sleep(heart)
 
 
@@ -382,6 +522,8 @@ def main():
     database.insert_data(filter_list)
     # 读取sqlite3数据,只读取未完成的数据
     tasks = database.read_data(status=0)
+    task_count = len(tasks)
+    threadstatus.add_tasks(task_count)  # 更新总计数器
     # 写入到Queue
     for task in tasks.items():
         threadstatus.download_queue.put(task)
