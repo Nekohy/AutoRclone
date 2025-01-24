@@ -203,7 +203,7 @@ class ProcessThread:
         """
         name, paths, sizes = cls._parse_files_info(files_info)
         pause_sizes = sizes * (cls.download_magnification + cls.decompress_magnification + cls.compress_magnification)
-        release_sizes = 0  # 暂时释放大小为0
+        release_sizes = 0
         try:
             # 等待下载事件被设置
             threadstatus.download_continue_event.wait()
@@ -224,18 +224,19 @@ class ProcessThread:
             database.update_status(basename=name, step=1, status=3, log=str(e))
             # 更新总错误任务数
             threadstatus.increment_errors()
+            threadstatus.throttling = -pause_sizes
             shutil.rmtree(str(cls._get_name(name)["download"]), ignore_errors=True)
         except Exception as e:
             logging_capture.error(f"当前任务{name}下载过程未知出错: {e}")
             database.update_status(basename=name, step=1, status=4, log=str(e))
             # 更新总错误任务数
             threadstatus.increment_errors()
+            threadstatus.throttling = -pause_sizes
             shutil.rmtree(str(cls._get_name(name)["download"]), ignore_errors=True)
         finally:
             threadstatus.throttling = -release_sizes
             with threadstatus.lock:
                 threadstatus.active_download -= 1
-                threadstatus.throttling = -pause_sizes
 
     @classmethod
     def decompress_thread(cls, files_info):
@@ -251,7 +252,6 @@ class ProcessThread:
             threadstatus.decompress_continue_event.wait()
             with threadstatus.lock:
                 threadstatus.active_decompress += 1
-                threadstatus.throttling = pause_sizes
             # todo 增加错误重试,这里有坑，不能多次解压已成功的，没有抓响应码
             logging_capture.info(f"开始解压: {name}")
             fileprocess.decompress(cls._get_name(name)["download"], cls._get_name(name)["decompress"], passwords=passwords)
@@ -266,6 +266,7 @@ class ProcessThread:
             logging_capture.warning(log)
             database.update_status(basename=name, step=2, status=2, log=log)
             # 更新总错误任务数
+            threadstatus.throttling = -pause_sizes
             threadstatus.increment_errors()
             shutil.rmtree(str(cls._get_name(name)["decompress"]), ignore_errors=True)
         except NoExistDecompressDir:
@@ -273,6 +274,7 @@ class ProcessThread:
             logging_capture.warning(log)
             database.update_status(basename=name, step=2, status=3, log=log)
             # 更新总错误任务数
+            threadstatus.throttling = -pause_sizes
             threadstatus.increment_errors()
             shutil.rmtree(str(cls._get_name(name)["decompress"]), ignore_errors=True)
         except UnpackError as e:
@@ -280,6 +282,7 @@ class ProcessThread:
             logging_capture.error(log)
             database.update_status(basename=name, step=2, status=3, log=log)
             # 更新总错误任务数
+            threadstatus.throttling = -pause_sizes
             threadstatus.increment_errors()
             shutil.rmtree(str(cls._get_name(name)["decompress"]), ignore_errors=True)
         except Exception as e:
@@ -287,6 +290,7 @@ class ProcessThread:
             logging_capture.error(log)
             database.update_status(basename=name, step=2, status=4, log=log)
             # 更新总错误任务数
+            threadstatus.throttling = -pause_sizes
             threadstatus.increment_errors()
             shutil.rmtree(str(cls._get_name(name)["decompress"]), ignore_errors=True)
         finally:
@@ -310,7 +314,6 @@ class ProcessThread:
             threadstatus.compress_continue_event.wait()
             with threadstatus.lock:
                 threadstatus.active_compress += 1
-                threadstatus.throttling = pause_sizes
             logging_capture.info(f"开始压缩: {name}")
             # noinspection PyTypeChecker
             fileprocess.compress(
@@ -332,6 +335,7 @@ class ProcessThread:
             database.update_status(basename=name, step=3, status=3, log=log)
             # 更新总错误任务数
             threadstatus.increment_errors()
+            threadstatus.throttling = -pause_sizes
             shutil.rmtree(str(cls._get_name(name)["compress"]), ignore_errors=True)
         except Exception as e:
             log = f"当前任务{name}压缩过程未知出错: {e}"
@@ -339,6 +343,7 @@ class ProcessThread:
             database.update_status(basename=name, step=3, status=4, log=log)
             # 更新总错误任务数
             threadstatus.increment_errors()
+            threadstatus.throttling = -pause_sizes
             shutil.rmtree(str(cls._get_name(name)["compress"]), ignore_errors=True)
         finally:
             # 释放解压阶段占用的磁盘空间
@@ -361,7 +366,6 @@ class ProcessThread:
             threadstatus.upload_continue_event.wait()
             with threadstatus.lock:
                 threadstatus.active_upload += 1
-                threadstatus.throttling = pause_sizes
             logging_capture.info(f"开始上传: {name}")
             rclone.move(cls._get_name(name)["compress"], cls._get_name(name)["upload"])
             logging_capture.info(f"上传步骤完成: {name}")
@@ -373,12 +377,14 @@ class ProcessThread:
             logging_capture.error(log)
             database.update_status(basename=name, step=4, status=3, log=log)
             # 更新总错误任务数
+            threadstatus.throttling = -pause_sizes
             threadstatus.increment_errors()
         except Exception as e:
             log = f"当前任务{name}上传过程未知出错: {e}"
             logging_capture.error(log)
             database.update_status(basename=name, step=4, status=4, log=log)
             # 更新总错误任务数
+            threadstatus.throttling = -pause_sizes
             threadstatus.increment_errors()
         finally:
             # 释放压缩阶段占用的磁盘空间
