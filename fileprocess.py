@@ -1,4 +1,5 @@
 # 使用7z官方的二进制文件
+import concurrent.futures
 import os
 import shutil
 import subprocess
@@ -17,42 +18,50 @@ class FileProcess:
         # 自动删除中间文件
         self.autodelete = autodelete
 
-    def decompress(self,src_fs,dst_fs,passwords:list=[]):
+    # noinspection PyDefaultArgument
+    def decompress(self, src_fs, dst_fs, passwords: list = [], max_workers=32):
         """
         解压文件到指定路径
         :param passwords: 可用的密码列表
         :param src_fs: 目标压缩文件所在文件夹
-        :param dst_fs: 解压工作路径 例如 “./tmp”
+        :param dst_fs: 解压工作路径 例如 "./tmp"
+        :param max_workers: 最大线程数量
         :return: 解压后文件所在路径
         """
         passwords.append(None)
         if not os.path.exists(src_fs):
             raise NoExistDecompressDir(f"错误：源文件夹 {src_fs} 不存在")
-        os.makedirs(dst_fs,exist_ok=True)
+        os.makedirs(dst_fs, exist_ok=True)
 
         origin_command = [
             self.p7zip_file,
             'x',
             src_fs,
             f'-o{dst_fs}',
-            '-aoa',  #  覆盖文件
+            '-aoa',  # 覆盖文件
             f'-mmt={self.mmt}'
-
         ]
         if self.autodelete:
             origin_command.append('-sdel')
-        for pwd in passwords:
+
+        def try_decompress(pwd):
             command = origin_command + ([f'-p{pwd}'] if pwd else ['-p'])
-            # self.logging.debug(f"当前解压缩命令 {command}")
             result = subprocess.run(command, capture_output=True, text=True)
-            # self.logging.debug(f"当前解压缩日志{result.stdout}")
-            if result.returncode == 0:
-                return dst_fs
-            elif "Wrong password" in result.stderr:
-                pass
-                # print(f"{src_fs}密码 '{pwd}' 不正确，尝试下一个密码")
-            else:
-                raise UnpackError(f"{src_fs}解压过程中发生错误: {result.stderr}\n标准输出: {result.stdout}")
+            return result, pwd
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_pwd = {executor.submit(try_decompress, pwd): pwd for pwd in passwords}
+            for future in concurrent.futures.as_completed(future_to_pwd):
+                result, pwd = future.result()
+                if result.returncode == 0:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    return dst_fs
+                elif "Wrong password" in result.stderr:
+                    continue
+                else:
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise UnpackError(f"{src_fs}解压过程中发生错误: {result.stderr}\n标准输出: {result.stdout}")
+
         raise NoRightPasswd(f"{src_fs}没有正确的密码")
 
     def compress(self, src_fs: str, dst_fs: str, password: str = None,mx:int=0,volumes: str = "4G"):
