@@ -19,7 +19,7 @@ class FileProcess:
         self.autodelete = autodelete
 
     # noinspection PyDefaultArgument
-    def decompress(self, src_fs, dst_fs, passwords: list = [], max_workers=32):
+    def decompress(self, src_fs, dst_fs, passwords: list = [], max_workers=8):
         """
         解压文件到指定路径
         :param passwords: 可用的密码列表
